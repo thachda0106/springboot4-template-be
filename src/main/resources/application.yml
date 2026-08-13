@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: modular-monolith
+
+  jpa:
+    hibernate:
+      # Schema is owned by Flyway migrations; Hibernate only validates it.
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    com.example.app: INFO
+
+---
+# Datasource and JWT issuer are environment-specific:
+#   local -> application-local.yml (dev defaults, HMAC JWT mode)
+#   test  -> application-test.yml  (Testcontainers + HMAC JWT mode)
+#   prod  -> application-prod.yml  (env-provided DB_URL/DB_USERNAME/DB_PASSWORD + JWT_ISSUER_URI)

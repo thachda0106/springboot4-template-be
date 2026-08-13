@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    # Overridable for docker-compose (DB_URL points at the postgres service).
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/modular_monolith}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+app:
+  security:
+    jwt:
+      # Local development mode: JWTs are signed/validated with a shared HMAC secret
+      # (see docs/security.md "Local development"). Production NEVER sets this
+      # property - it uses spring.security.oauth2.resourceserver.jwt.issuer-uri.
+      secret-key: ${JWT_LOCAL_SECRET:local-dev-secret-change-me-0123456789abcdef}
+
+logging:
+  level:
+    com.example.app: DEBUG

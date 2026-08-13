@@ -1,0 +1,98 @@
+package com.example.app.integration;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
+
+import java.util.UUID;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * End-to-end REST + persistence + security tests for the user module.
+ * Also proves the user module is a business module (no credential endpoints).
+ */
+class UserApiIntegrationTest extends AbstractApiIntegrationTest {
+
+    @Test
+    void createUserReturns201() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Alice Nguyen", "email": "alice.%s@example.com"}
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Alice Nguyen"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.email").isNotEmpty());
+    }
+
+    @Test
+    void createUserWithoutWriteScopeReturns403() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .with(jwt().jwt(j -> j.subject("system").claim("scope", "activity:read")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Alice", "email": "alice.%s@example.com"}
+                                """.formatted(UUID.randomUUID())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createUserWithInvalidEmailReturns400() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Alice", "email": "not-an-email"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.fieldErrors[0].field").value("email"));
+    }
+
+    @Test
+    void createUserWithDuplicateEmailReturns409() throws Exception {
+        String email = "duplicate." + UUID.randomUUID() + "@example.com";
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Alice", "email": "%s"}
+                                """.formatted(email)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/users")
+                        .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Bob", "email": "%s"}
+                                """.formatted(email)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("USER_ALREADY_EXISTS"));
+    }
+
+    @Test
+    void getUnknownUserReturns404() throws Exception {
+        mockMvc.perform(get("/api/users/{id}", UUID.randomUUID())
+                        .with(jwt().jwt(j -> j.subject("someone").claim("scope", "activity:read"))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    void meReturnsTheAuthenticatedUser() throws Exception {
+        String userId = createUser("self");
+
+        mockMvc.perform(get("/api/users/me")
+                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.name").value("self"));
+    }
+}

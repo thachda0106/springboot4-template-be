@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: modular_monolith
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d modular_monolith"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      # Development stack: local profile = HMAC JWT mode (security still enforced,
+      # tokens validated, see docs/security.md). Production profile would need
+      # DB_URL/DB_USERNAME/DB_PASSWORD + JWT_ISSUER_URI from a real Identity Provider.
+      SPRING_PROFILES_ACTIVE: local
+      DB_URL: jdbc:postgresql://postgres:5432/modular_monolith
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      JWT_LOCAL_SECRET: local-dev-secret-change-me-0123456789abcdef
+      TZ: UTC
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
