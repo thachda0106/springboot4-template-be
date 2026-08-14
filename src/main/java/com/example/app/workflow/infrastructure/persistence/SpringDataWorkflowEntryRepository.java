@@ -7,9 +7,9 @@ import java.util.UUID;
 
 /**
  * Spring Data repository - internal persistence detail of the workflow module.
- * Only {@link JpaWorkflowEntryRepository} may use it.
+ * Only {@link WorkflowEntryRepositoryAdapter} may use it.
  */
-interface WorkflowEntryJpaRepository extends JpaRepository<WorkflowEntryJpaEntity, UUID> {
+interface SpringDataWorkflowEntryRepository extends JpaRepository<WorkflowEntryJpaEntity, UUID> {
 
     Optional<WorkflowEntryJpaEntity> findByActivityId(UUID activityId);
 }

@@ -12,28 +12,28 @@ import java.util.UUID;
  * The only class in the workflow module allowed to touch Spring Data.
  */
 @Repository
-public class JpaWorkflowEntryRepository implements WorkflowEntryRepository {
+public class WorkflowEntryRepositoryAdapter implements WorkflowEntryRepository {
 
-    private final WorkflowEntryJpaRepository jpaRepository;
+    private final SpringDataWorkflowEntryRepository springDataRepository;
 
-    public JpaWorkflowEntryRepository(WorkflowEntryJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
+    public WorkflowEntryRepositoryAdapter(SpringDataWorkflowEntryRepository springDataRepository) {
+        this.springDataRepository = springDataRepository;
     }
 
     @Override
     public WorkflowEntry save(WorkflowEntry entry) {
-        // saveAndFlush: see JpaActivityRepository for the rationale.
+        // saveAndFlush: see ActivityRepositoryAdapter for the rationale.
         return WorkflowEntryEntityMapper.toDomain(
-                jpaRepository.saveAndFlush(WorkflowEntryEntityMapper.toEntity(entry)));
+                springDataRepository.saveAndFlush(WorkflowEntryEntityMapper.toEntity(entry)));
     }
 
     @Override
     public Optional<WorkflowEntry> findByActivityId(UUID activityId) {
-        return jpaRepository.findByActivityId(activityId).map(WorkflowEntryEntityMapper::toDomain);
+        return springDataRepository.findByActivityId(activityId).map(WorkflowEntryEntityMapper::toDomain);
     }
 
     @Override
     public void delete(WorkflowEntry entry) {
-        jpaRepository.deleteById(entry.id());
+        springDataRepository.deleteById(entry.id());
     }
 }

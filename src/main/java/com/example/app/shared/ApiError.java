@@ -5,9 +5,11 @@ import java.util.List;
 
 /**
  * Consistent REST error payload returned by every error path:
- * validation failures, business errors, 401/403 responses and unexpected errors.
+ * validation failures, business errors, 401/403 responses and unexpected
+ * errors.
  *
- * <p>This is the only cross-cutting type in the {@code shared} module: it carries
+ * <p>
+ * This is the only cross-cutting type in the {@code shared} module: it carries
  * no business state and is used by all modules' exception handlers and by the
  * security layer. Module-specific exceptions stay inside their own module.
  */

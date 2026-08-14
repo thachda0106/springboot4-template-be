@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * Spring Data repository - internal persistence detail of the activity module.
- * Only {@link JpaActivityRepository} may use it.
+ * Only {@link ActivityRepositoryAdapter} may use it.
  */
-interface ActivityJpaRepository extends JpaRepository<ActivityJpaEntity, UUID> {
+interface SpringDataActivityRepository extends JpaRepository<ActivityJpaEntity, UUID> {
 }

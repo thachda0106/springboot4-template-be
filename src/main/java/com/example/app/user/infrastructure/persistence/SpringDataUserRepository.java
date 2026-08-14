@@ -7,9 +7,9 @@ import java.util.UUID;
 
 /**
  * Spring Data repository - internal persistence detail of the user module.
- * Only {@link JpaUserRepository} may use it.
+ * Only {@link UserRepositoryAdapter} may use it.
  */
-interface UserJpaRepository extends JpaRepository<UserJpaEntity, UUID> {
+interface SpringDataUserRepository extends JpaRepository<UserJpaEntity, UUID> {
 
     Optional<UserJpaEntity> findByEmail(String email);
 }

@@ -12,12 +12,12 @@ import java.util.Optional;
  * This is the only class in the activity module allowed to touch Spring Data.
  */
 @Repository
-public class JpaActivityRepository implements ActivityRepository {
+public class ActivityRepositoryAdapter implements ActivityRepository {
 
-    private final ActivityJpaRepository jpaRepository;
+    private final SpringDataActivityRepository springDataRepository;
 
-    public JpaActivityRepository(ActivityJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
+    public ActivityRepositoryAdapter(SpringDataActivityRepository springDataRepository) {
+        this.springDataRepository = springDataRepository;
     }
 
     @Override
@@ -25,17 +25,17 @@ public class JpaActivityRepository implements ActivityRepository {
         // saveAndFlush: with assigned UUIDs the INSERT is otherwise deferred to
         // commit, leaving @CreationTimestamp/@Version unpopulated on the returned
         // aggregate (the response would lack timestamps and version).
-        ActivityJpaEntity saved = jpaRepository.saveAndFlush(ActivityEntityMapper.toEntity(activity));
+        ActivityJpaEntity saved = springDataRepository.saveAndFlush(ActivityEntityMapper.toEntity(activity));
         return ActivityEntityMapper.toDomain(saved);
     }
 
     @Override
     public Optional<Activity> findById(ActivityId id) {
-        return jpaRepository.findById(id.value()).map(ActivityEntityMapper::toDomain);
+        return springDataRepository.findById(id.value()).map(ActivityEntityMapper::toDomain);
     }
 
     @Override
     public void delete(ActivityId id) {
-        jpaRepository.deleteById(id.value());
+        springDataRepository.deleteById(id.value());
     }
 }

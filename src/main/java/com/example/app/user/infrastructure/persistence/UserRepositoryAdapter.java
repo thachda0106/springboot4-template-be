@@ -12,27 +12,27 @@ import java.util.Optional;
  * The only class in the user module allowed to touch Spring Data.
  */
 @Repository
-public class JpaUserRepository implements UserRepository {
+public class UserRepositoryAdapter implements UserRepository {
 
-    private final UserJpaRepository jpaRepository;
+    private final SpringDataUserRepository springDataRepository;
 
-    public JpaUserRepository(UserJpaRepository jpaRepository) {
-        this.jpaRepository = jpaRepository;
+    public UserRepositoryAdapter(SpringDataUserRepository springDataRepository) {
+        this.springDataRepository = springDataRepository;
     }
 
     @Override
     public User save(User user) {
-        // saveAndFlush: see JpaActivityRepository for the rationale.
-        return UserEntityMapper.toDomain(jpaRepository.saveAndFlush(UserEntityMapper.toEntity(user)));
+        // saveAndFlush: see ActivityRepositoryAdapter for the rationale.
+        return UserEntityMapper.toDomain(springDataRepository.saveAndFlush(UserEntityMapper.toEntity(user)));
     }
 
     @Override
     public Optional<User> findById(UserId id) {
-        return jpaRepository.findById(id.value()).map(UserEntityMapper::toDomain);
+        return springDataRepository.findById(id.value()).map(UserEntityMapper::toDomain);
     }
 
     @Override
     public Optional<User> findByEmail(String email) {
-        return jpaRepository.findByEmail(email).map(UserEntityMapper::toDomain);
+        return springDataRepository.findByEmail(email).map(UserEntityMapper::toDomain);
     }
 }

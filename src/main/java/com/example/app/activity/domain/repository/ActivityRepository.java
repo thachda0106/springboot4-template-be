@@ -9,7 +9,7 @@ import java.util.Optional;
  * Domain repository contract for activities.
  *
  * <p>Declared in the domain layer, implemented in the infrastructure layer
- * ({@code JpaActivityRepository}). Application and domain code depend only on
+ * ({@code ActivityRepositoryAdapter}). Application and domain code depend only on
  * this interface - never on Spring Data or JPA types.
  */
 public interface ActivityRepository {

@@ -190,7 +190,7 @@ the support window predates those releases; 12.11.0 is the newest 12.x line).
 | Synchronous listeners: listener failure can turn a committed request into a 500 | docs/transaction-boundaries.md §5 |
 | HMAC local/test mode validates signatures but not issuer; impossible in prod (property absent there) | docs/security.md §3 |
 | Module advices must be `@Order(HIGHEST_PRECEDENCE)` (Spring takes the first matching advice, not the most specific) | docs/architecture.md §9, docs/transaction-boundaries.md §5 |
-| `saveAndFlush` in repository `save` (immediate INSERT so returned aggregates carry version/timestamps) | JpaActivityRepository javadoc |
+| `saveAndFlush` in repository `save` (immediate INSERT so returned aggregates carry version/timestamps) | ActivityRepositoryAdapter javadoc |
 
 ## 20. Future extraction candidates (documented, NOT implemented)
 

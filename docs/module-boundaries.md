@@ -9,8 +9,8 @@ coupling decisions.
    Internal = every package below the module root that is not declared a named interface.
 2. **Controllers belong to their own module.** No global `controller/` package; a controller
    in `activity.api` only ever talks to `activity.application`.
-3. **Repositories belong to their own module.** `JpaActivityRepository` is the *only* class
-   that touches Spring Data inside the activity module; `ActivityJpaRepository` is
+3. **Repositories belong to their own module.** `ActivityRepositoryAdapter` is the *only* class
+   that touches Spring Data inside the activity module; `SpringDataActivityRepository` is
    package-private on purpose.
 4. **Domain logic belongs to the appropriate bounded context.** The workflow module has its
    own `WorkflowEntry` model — it never reuses activity's `Activity`.

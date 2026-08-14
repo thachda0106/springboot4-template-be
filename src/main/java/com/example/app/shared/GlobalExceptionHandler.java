@@ -19,9 +19,12 @@ import java.util.List;
  * Cross-cutting REST error handling: validation failures, malformed requests,
  * unknown paths, optimistic-lock conflicts and unexpected errors.
  *
- * <p>Module-specific business exceptions (e.g. {@code ActivityNotFoundException})
- * are handled by each module's own {@code @RestControllerAdvice}; Spring picks the
- * most specific handler, so this advice is only the fallback for technical errors.
+ * <p>
+ * Module-specific business exceptions (e.g. {@code ActivityNotFoundException})
+ * are handled by each module's own {@code @RestControllerAdvice}; Spring picks
+ * the
+ * most specific handler, so this advice is only the fallback for technical
+ * errors.
  * No stack traces or internal details are ever exposed to clients.
  */
 @RestControllerAdvice
@@ -38,8 +41,8 @@ public class GlobalExceptionHandler {
         return ApiError.of("VALIDATION_ERROR", "Request validation failed", request.getRequestURI(), fieldErrors);
     }
 
-    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
-            IllegalArgumentException.class})
+    @ExceptionHandler({ HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
+            IllegalArgumentException.class })
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiError handleMalformedRequest(Exception ex, HttpServletRequest request) {
         return ApiError.of("MALFORMED_REQUEST", "Request body or path parameter is malformed", request.getRequestURI());
@@ -51,7 +54,7 @@ public class GlobalExceptionHandler {
         return ApiError.of("NOT_FOUND", "Resource not found", request.getRequestURI());
     }
 
-    @ExceptionHandler({ObjectOptimisticLockingFailureException.class, ConflictException.class})
+    @ExceptionHandler({ ObjectOptimisticLockingFailureException.class, ConflictException.class })
     @ResponseStatus(HttpStatus.CONFLICT)
     ApiError handleConflict(Exception ex, HttpServletRequest request) {
         return ApiError.of("CONFLICT", "The resource was modified concurrently; reload it and retry",

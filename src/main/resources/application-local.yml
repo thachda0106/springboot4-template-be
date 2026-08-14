@@ -3,7 +3,7 @@ spring:
     # Overridable for docker-compose (DB_URL points at the postgres service).
     url: ${DB_URL:jdbc:postgresql://localhost:5432/modular_monolith}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    password: ${DB_PASSWORD:123456}
 
 app:
   security:
