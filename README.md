@@ -15,7 +15,7 @@ and operational requirements justify it.
 | Runtime | Java 21, Spring Boot 4.1.0, Maven |
 | Modularity | Spring Modulith 2.1.0 (module detection + architecture verification + in-process transactional events) |
 | Architecture | Domain-Driven Design, bounded contexts, hexagonal layering per module, event-driven module communication |
-| Security | Spring Security 7.1, OAuth2 Resource Server, JWT bearer tokens (external Identity Provider) |
+| Security | Spring Security 7.1, first-party JWT issuance (login/refresh/logout), RBAC |
 | Persistence | Spring Data JPA / Hibernate 7.4, PostgreSQL, Flyway 12 migrations |
 | Observability | Spring Boot Actuator, Micrometer, Prometheus endpoint, structured (ECS) logging in prod |
 | Testing | JUnit 5, Mockito, MockMvc, Testcontainers (real PostgreSQL) |
@@ -176,41 +176,45 @@ In this template (no `@EnableAsync`, no event publication registry):
 
 ## 13. Spring Security architecture
 
-The application is an **OAuth2 Resource Server**: it validates JWTs, it never issues them.
+The application is its **own token issuer**: `POST /api/v1/auth/login` (email + password)
+returns an access token and a refresh token; every request validates the access token.
 Spring Security sits at the API boundary only:
 
 ```text
-Client → JWT → SecurityFilterChain → authorization rules → Controller → Use Case → Domain
+Client → POST /auth/login → token pair → Bearer JWT → SecurityFilterChain → authorization rules → Controller → Use Case → Domain
 ```
 
 ## 14. JWT authentication
 
-`Authorization: Bearer <JWT>`, validated by Spring Security against the configured issuer
-(OIDC discovery in production) or a shared HMAC secret (local/test). The `sub` claim is the
-user id; `scope` claims become authorities (`SCOPE_<scope>`).
+`Authorization: Bearer <JWT>`, issued by the application itself — HMAC secret in local/test,
+RSA key pair in production. The `sub` claim is the user id; the `role` claim becomes the
+`ROLE_<role>` authority. Refresh tokens are opaque, stored as SHA-256 hashes, rotated on
+refresh and revoked on logout.
 
-## 15. Authorization and authorities
+## 15. Authorization and authorities (RBAC)
 
 | Endpoint | Requirement |
 |---|---|
 | `GET /api/v1/activities/**` | authenticated |
-| `POST` / `PUT /api/v1/activities/**` | `SCOPE_activity:write` |
-| `DELETE /api/v1/activities/**` | `SCOPE_activity:admin` |
+| `POST` / `PUT /api/v1/activities/**` | `ROLE_USER` or `ROLE_ADMIN` |
+| `DELETE /api/v1/activities/**` | `ROLE_ADMIN` |
 | `GET /api/v1/workflow-entries/**` | authenticated |
-| `POST /api/v1/users` | `SCOPE_user:write` |
+| `POST /api/v1/users` | `ROLE_ADMIN` |
 | `GET /api/v1/users/**` | authenticated |
+| `POST /api/v1/auth/login`, `/api/v1/auth/refresh` | public |
+| `POST /api/v1/auth/logout` | authenticated |
 | `/actuator/health`, `/actuator/info` | public |
 
-Expected JWT claims: `{"sub": "user-123", "scope": "activity:read activity:write"}`.
+Expected JWT claims: `{"sub": "user-123", "role": "ADMIN"}`.
 401 (unauthenticated) and 403 (forbidden) return the same JSON error contract.
 See [docs/security.md](docs/security.md).
 
-## 16. Why the User module is not an Identity Provider
+## 16. Why the User module owns authentication
 
-The user module models **business user information** (name, email, status). Authentication
-(proving who you are) is externalized to an OAuth2/OIDC Identity Provider (Keycloak, Auth0,
-Cognito, Okta, ...); the JWT `sub` claim identifies the user. No passwords, credentials or
-token endpoints exist in this codebase.
+The user module models **business user information** (name, email, status) and now also owns
+first-party authentication: BCrypt password hashes, roles (RBAC) and refresh-token sessions.
+Access tokens are issued by the security module's `JwtTokenService`. The first admin is
+bootstrapped via `app.bootstrap.admin-email`/`admin-password` (see docs/security.md).
 
 ## 17. Why Kafka is not included
 
@@ -245,7 +249,7 @@ the same transaction; a scheduler retries failed publications), or a dedicated o
 Extraction checklist: expose the module's behavior over HTTP (its API is already isolated),
 replace in-process events with Kafka events (the events already carry primitives only), split
 the database (drop the cross-module FK), move security config to the new service, keep the
-IdP. Each step is reversible; the module boundaries make it cheap.
+token issuer. Each step is reversible; the module boundaries make it cheap.
 See [docs/evolution-to-microservices.md](docs/evolution-to-microservices.md).
 
 ---
@@ -273,35 +277,42 @@ mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local     # Windows
 
 ```bash
 export DB_URL=jdbc:postgresql://localhost:5432/modular_monolith DB_USERNAME=postgres DB_PASSWORD=postgres \
-       JWT_ISSUER_URI=https://your-idp.example.com/realms/your-realm
+       JWT_PRIVATE_KEY="$(cat private.pem)" JWT_PUBLIC_KEY="$(cat public.pem)"
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
 ### Get a token and call the API (local mode)
 
 ```bash
-# 1. create a user (any valid JWT with scope user:write; use the script to mint one)
-TOKEN=$(python scripts/mint-local-jwt.py --sub system --scope "user:write activity:write activity:admin activity:read")
+# 1. create a user with a password (requires ROLE_ADMIN; mint an ADMIN token for an
+#    existing admin user id, or bootstrap the first admin via BOOTSTRAP_ADMIN_EMAIL/PASSWORD)
+TOKEN=$(python scripts/mint-local-jwt.py --sub <admin-user-id> --role ADMIN)
 curl -s -X POST http://localhost:8080/api/v1/users \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"Alice","email":"alice@example.com"}'
+  -d '{"name":"Alice","email":"alice@example.com","password":"s3cret-pass","role":"USER"}'
 # -> 201 {"id":"...","name":"Alice",...}   (note the user id)
 
-# 2. mint a token for that user and create an activity
-TOKEN=$(python scripts/mint-local-jwt.py --sub <user-id> --scope "activity:write")
+# 2. log in with email + password -> access + refresh tokens
+curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"s3cret-pass"}'
+# -> 200 {"accessToken":"...","refreshToken":"...","tokenType":"Bearer","expiresIn":900}
+
+# 3. call the API with the access token
 curl -s -X POST http://localhost:8080/api/v1/activities \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"Team retro","description":"Monthly retro"}'
 # -> 201 {...}
 
-# 3. the workflow module already reacted (event-driven)
-TOKEN=$(python scripts/mint-local-jwt.py --sub <user-id> --scope "activity:read")
-curl -s http://localhost:8080/api/v1/workflow-entries/<activity-id> -H "Authorization: Bearer $TOKEN"
-# -> 200 {"status":"CREATED",...}
+# 4. refresh (rotates the refresh token) and logout (revokes it)
+curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H "Content-Type: application/json" \
+  -d '{"refreshToken":"..."}'
+curl -s -X POST http://localhost:8080/api/v1/auth/logout -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" -d '{"refreshToken":"..."}'
 ```
 
 The mint script (`scripts/mint-local-jwt.py`) is a **development-only** convenience
-(HS256 + the local secret). Production tokens come from the Identity Provider.
+(HS256 + the local secret). Production tokens are issued by the application itself (RSA).
 
 ## Build and test
 
@@ -315,9 +326,7 @@ verification** (Spring Modulith, including a test that proves violations are det
 API/security tests, and integration tests against a real PostgreSQL container via
 Testcontainers (Docker required).
 
-> Note: on this Windows setup, git-bash's MSYS path conversion breaks the bash `./mvnw`
-> launcher (`ClassNotFoundException: classworlds.Launcher`). Use `mvnw.cmd` in `cmd`, or
-> the system `mvn`. In the Linux Docker build and on CI, `./mvnw` works normally.
+> Note: on this Windows setup, `./mvnw` works in git-bash; use `mvnw.cmd` in `cmd`.
 
 ## Project layout
 

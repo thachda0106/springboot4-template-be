@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -51,7 +52,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(get("/api/v1/workflow-entries/{activityId}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.activityName").value("Retro"))
                 .andExpect(jsonPath("$.status").value("CREATED"));
@@ -63,7 +64,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(put("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Retro Q3", "version": 0}
@@ -71,7 +72,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/workflow-entries/{activityId}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.activityName").value("Retro Q3"))
                 .andExpect(jsonPath("$.status").value("UPDATED"));
@@ -83,11 +84,11 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(delete("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:admin"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "ADMIN")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/v1/workflow-entries/{activityId}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("WORKFLOW_ENTRY_NOT_FOUND"));
     }
@@ -142,7 +143,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
 
     private String createActivity(String userId, String name) throws Exception {
         var result = mockMvc.perform(post("/api/v1/activities")
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "%s"}

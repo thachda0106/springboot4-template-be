@@ -5,13 +5,23 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
+app:
   security:
-    oauth2:
-      resourceserver:
-        jwt:
-          # OIDC discovery against the external Identity Provider (Keycloak,
-          # Auth0, Cognito, Okta, ...). Fails fast at startup if not provided.
-          issuer-uri: ${JWT_ISSUER_URI}
+    jwt:
+      # The application is its own token issuer in production: it signs access tokens
+      # with an RSA private key and validates them with the matching public key.
+      # Generate a key pair and provide both PEM values (see docs/security.md).
+      private-key: ${JWT_PRIVATE_KEY}
+      public-key: ${JWT_PUBLIC_KEY}
+      issuer: ${JWT_ISSUER:modular-monolith}
+      audience: ${JWT_AUDIENCE:modular-monolith}
+      access-token-ttl: ${JWT_ACCESS_TTL:15m}
+      refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+
+  bootstrap:
+    # Optional: provision the first ADMIN user on a fresh deployment.
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
 logging:
   structured:

@@ -2,6 +2,7 @@ package com.example.app.integration;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.util.UUID;
 
@@ -25,7 +26,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("alice");
 
         mockMvc.perform(post("/api/v1/activities")
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Team retro", "description": "Monthly retro"}
@@ -41,11 +42,12 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
     }
 
     @Test
-    void createActivityWithoutWriteScopeReturns403() throws Exception {
+    void createActivityWithoutRoleReturns403() throws Exception {
         String userId = createUser("bob");
 
+        // An authenticated token with no ROLE_* authority cannot create activities.
         mockMvc.perform(post("/api/v1/activities")
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read")))
+                        .with(jwt().jwt(j -> j.subject(userId)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Team retro"}
@@ -59,7 +61,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("carol");
 
         mockMvc.perform(post("/api/v1/activities")
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "   "}
@@ -73,7 +75,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
     @Test
     void createActivityForUnknownCreatorReturns404() throws Exception {
         mockMvc.perform(post("/api/v1/activities")
-                        .with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString()).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString()).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Team retro"}
@@ -88,7 +90,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(get("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(activityId))
                 .andExpect(jsonPath("$.name").value("Retro"));
@@ -99,7 +101,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("erin");
 
         mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID())
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ACTIVITY_NOT_FOUND"));
     }
@@ -110,7 +112,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(put("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Retro Q3", "description": "updated", "version": 0}
@@ -128,7 +130,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
 
         // First update succeeds (version 0 -> 1) ...
         mockMvc.perform(put("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Retro Q3", "version": 0}
@@ -137,7 +139,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
 
         // ... the same version 0 is now stale -> 409
         mockMvc.perform(put("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Retro Q4", "version": 0}
@@ -152,7 +154,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(delete("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
@@ -163,11 +165,11 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         mockMvc.perform(delete("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:admin"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "ADMIN")).authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/v1/activities/{id}", activityId)
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound());
     }
 
@@ -180,7 +182,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
 
     private String createActivity(String userId, String name) throws Exception {
         var result = mockMvc.perform(post("/api/v1/activities")
-                        .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
+                        .with(jwt().jwt(j -> j.subject(userId).claim("role", "USER")).authorities(new SimpleGrantedAuthority("ROLE_USER")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "%s"}

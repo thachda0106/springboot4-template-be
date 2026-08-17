@@ -18,6 +18,8 @@ final class UserEntityMapper {
                 user.name(),
                 user.email(),
                 user.status(),
+                user.passwordHash(),
+                user.role(),
                 user.createdAt(),
                 user.updatedAt());
     }
@@ -28,6 +30,8 @@ final class UserEntityMapper {
                 entity.getName(),
                 entity.getEmail(),
                 entity.getStatus(),
+                entity.getPasswordHash(),
+                entity.getRole(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt());
     }

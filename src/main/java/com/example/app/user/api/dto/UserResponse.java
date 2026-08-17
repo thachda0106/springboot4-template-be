@@ -10,6 +10,7 @@ public record UserResponse(
         String name,
         String email,
         String status,
+        String role,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -19,6 +20,7 @@ public record UserResponse(
                 user.name(),
                 user.email(),
                 user.status().name(),
+                user.role().name(),
                 user.createdAt(),
                 user.updatedAt());
     }

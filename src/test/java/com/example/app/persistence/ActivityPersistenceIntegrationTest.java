@@ -5,6 +5,7 @@ import com.example.app.activity.domain.model.ActivityId;
 import com.example.app.activity.domain.repository.ActivityRepository;
 import com.example.app.integration.AbstractIntegrationTest;
 import com.example.app.user.domain.model.User;
+import com.example.app.user.domain.model.UserRole;
 import com.example.app.user.domain.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,8 @@ class ActivityPersistenceIntegrationTest extends AbstractIntegrationTest {
         tx = new TransactionTemplate(transactionManager);
         // created_by is a FK to users(id) - create a real user first.
         creatorId = tx.execute(status -> userRepository.save(User.create(
-                "Persistence Tester", "persistence-" + UUID.randomUUID() + "@example.com"))).id().value().toString();
+                "Persistence Tester", "persistence-" + UUID.randomUUID() + "@example.com",
+                "hash", UserRole.USER))).id().value().toString();
     }
 
     @Test

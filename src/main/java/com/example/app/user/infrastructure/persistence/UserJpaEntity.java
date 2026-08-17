@@ -1,5 +1,6 @@
 package com.example.app.user.infrastructure.persistence;
 
+import com.example.app.user.domain.model.UserRole;
 import com.example.app.user.domain.model.UserStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -15,7 +16,8 @@ import java.util.UUID;
 
 /**
  * JPA representation of a user - internal persistence detail of the user module.
- * Contains no credentials: authentication is externalized (see docs/security.md).
+ * Carries the BCrypt password hash and role needed for first-party authentication.
+ * Legacy rows may have a null password hash.
  */
 @Entity
 @Table(name = "users")
@@ -34,6 +36,13 @@ public class UserJpaEntity {
     @Column(nullable = false, length = 20)
     private UserStatus status;
 
+    @Column(name = "password_hash", length = 100)
+    private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserRole role;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -46,12 +55,14 @@ public class UserJpaEntity {
         // for JPA
     }
 
-    public UserJpaEntity(UUID id, String name, String email, UserStatus status,
-                         Instant createdAt, Instant updatedAt) {
+    public UserJpaEntity(UUID id, String name, String email, UserStatus status, String passwordHash,
+                         UserRole role, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.name = name;
         this.email = email;
         this.status = status;
+        this.passwordHash = passwordHash;
+        this.role = role;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -70,6 +81,14 @@ public class UserJpaEntity {
 
     public UserStatus getStatus() {
         return status;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public UserRole getRole() {
+        return role;
     }
 
     public Instant getCreatedAt() {

@@ -41,7 +41,7 @@ public class UserController {
 
     @PostMapping
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
-        User user = createUserUseCase.execute(request.name(), request.email());
+        User user = createUserUseCase.execute(request.name(), request.email(), request.password(), request.role());
 
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")

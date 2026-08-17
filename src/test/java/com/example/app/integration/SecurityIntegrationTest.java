@@ -2,6 +2,7 @@ package com.example.app.integration;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.util.UUID;
 
@@ -50,24 +51,52 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
         mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name": "Alice", "email": "a@example.com"}
+                                {"name": "Alice", "email": "a@example.com", "password": "s3cret-pass"}
                                 """))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void deleteActivityWithoutAdminAuthorityReturns403() throws Exception {
+    void deleteActivityWithoutAdminRoleReturns403() throws Exception {
         mockMvc.perform(delete("/api/v1/activities/{id}", UUID.randomUUID())
-                        .with(jwt().jwt(j -> j.subject("user-x").claim("scope", "activity:read activity:write"))))
+                        .with(jwt().jwt(j -> j.subject("user-x").claim("role", "USER"))
+                        .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test
+    void writeActivityWithoutAnyRoleReturns403() throws Exception {
+        // A token with no role claim is authenticated but has no ROLE_* authority.
+        mockMvc.perform(post("/api/v1/activities")
+                        .with(jwt().jwt(j -> j.subject("user-x")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Retro"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void writeActivityWithUnknownRoleReturns403() throws Exception {
+        // An unknown role maps to no ROLE_* authority (closed allow-list); here the
+        // token carries only ROLE_SUPERUSER, which grants nothing on this endpoint.
+        mockMvc.perform(post("/api/v1/activities")
+                        .with(jwt().jwt(j -> j.subject("user-x").claim("role", "SUPERUSER"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_SUPERUSER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "Retro"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void anyAuthenticatedUserCanReadActivities() throws Exception {
         mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID())
-                        .with(jwt().jwt(j -> j.subject("user-x").claim("scope", "activity:read"))))
-                // authentication passed (scope only guards the write endpoints);
+                        .with(jwt().jwt(j -> j.subject("user-x").claim("role", "USER"))
+                        .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                // authentication passed (role only guards the write endpoints);
                 // the id does not exist -> 404, NOT 401/403
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ACTIVITY_NOT_FOUND"));
@@ -76,7 +105,8 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
     @Test
     void unknownPathReturns404JsonForAuthenticatedUser() throws Exception {
         mockMvc.perform(get("/api/v1/does-not-exist")
-                        .with(jwt().jwt(j -> j.subject("user-x").claim("scope", "activity:read"))))
+                        .with(jwt().jwt(j -> j.subject("user-x").claim("role", "USER"))
+                        .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }

@@ -8,10 +8,14 @@ spring:
 app:
   security:
     jwt:
-      # Local development mode: JWTs are signed/validated with a shared HMAC secret
-      # (see docs/security.md "Local development"). Production NEVER sets this
-      # property - it uses spring.security.oauth2.resourceserver.jwt.issuer-uri.
+      # Local development mode: JWTs are signed and validated with a shared HMAC secret
+      # (see docs/security.md "Local development"). Production NEVER sets this property -
+      # it uses app.security.jwt.private-key/public-key (RSA).
       secret-key: ${JWT_LOCAL_SECRET:local-dev-secret-change-me-0123456789abcdef}
+      issuer: modular-monolith
+      audience: modular-monolith
+      access-token-ttl: 15m
+      refresh-token-ttl: 7d
 
 logging:
   level:

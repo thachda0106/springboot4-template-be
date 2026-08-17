@@ -4,6 +4,10 @@ app:
       # Fixed test secret: integration tests mint real HS256 JWTs with this
       # value and the application validates them with the same value.
       secret-key: test-jwt-secret-do-not-use-in-prod
+      issuer: modular-monolith
+      audience: modular-monolith
+      access-token-ttl: 15m
+      refresh-token-ttl: 7d
 
 spring:
   flyway:

@@ -19,8 +19,8 @@ services:
     build: .
     environment:
       # Development stack: local profile = HMAC JWT mode (security still enforced,
-      # tokens validated, see docs/security.md). Production profile would need
-      # DB_URL/DB_USERNAME/DB_PASSWORD + JWT_ISSUER_URI from a real Identity Provider.
+      # tokens signed + validated, see docs/security.md). Production profile would need
+      # DB_URL/DB_USERNAME/DB_PASSWORD + JWT_PRIVATE_KEY/JWT_PUBLIC_KEY (RSA).
       SPRING_PROFILES_ACTIVE: local
       DB_URL: jdbc:postgresql://postgres:5432/modular_monolith
       DB_USERNAME: postgres

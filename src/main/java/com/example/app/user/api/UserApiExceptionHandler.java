@@ -2,6 +2,8 @@ package com.example.app.user.api;
 
 import com.example.app.shared.ApiError;
 import com.example.app.user.domain.exception.DuplicateUserException;
+import com.example.app.user.domain.exception.InvalidCredentialsException;
+import com.example.app.user.domain.exception.InvalidRefreshTokenException;
 import com.example.app.user.domain.exception.InvalidUserException;
 import com.example.app.user.domain.exception.UserNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,5 +50,17 @@ public class UserApiExceptionHandler {
     @ResponseStatus(HttpStatus.CONFLICT)
     ApiError handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest request) {
         return ApiError.of("USER_ALREADY_EXISTS", "A user with this email already exists", request.getRequestURI());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    ApiError handleInvalidCredentials(InvalidCredentialsException ex, HttpServletRequest request) {
+        return ApiError.of("INVALID_CREDENTIALS", ex.getMessage(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    ApiError handleInvalidRefreshToken(InvalidRefreshTokenException ex, HttpServletRequest request) {
+        return ApiError.of("INVALID_REFRESH_TOKEN", ex.getMessage(), request.getRequestURI());
     }
 }
