@@ -50,7 +50,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("workflow-alice");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(get("/api/workflow-entries/{activityId}", activityId)
+        mockMvc.perform(get("/api/v1/workflow-entries/{activityId}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.activityName").value("Retro"))
@@ -62,7 +62,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("workflow-bob");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(put("/api/activities/{id}", activityId)
+        mockMvc.perform(put("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -70,7 +70,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
                                 """))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/workflow-entries/{activityId}", activityId)
+        mockMvc.perform(get("/api/v1/workflow-entries/{activityId}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.activityName").value("Retro Q3"))
@@ -82,11 +82,11 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("workflow-carol");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(delete("/api/activities/{id}", activityId)
+        mockMvc.perform(delete("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:admin"))))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/workflow-entries/{activityId}", activityId)
+        mockMvc.perform(get("/api/v1/workflow-entries/{activityId}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("WORKFLOW_ENTRY_NOT_FOUND"));
@@ -141,7 +141,7 @@ class WorkflowEventIntegrationTest extends AbstractApiIntegrationTest {
     }
 
     private String createActivity(String userId, String name) throws Exception {
-        var result = mockMvc.perform(post("/api/activities")
+        var result = mockMvc.perform(post("/api/v1/activities")
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

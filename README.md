@@ -193,12 +193,12 @@ user id; `scope` claims become authorities (`SCOPE_<scope>`).
 
 | Endpoint | Requirement |
 |---|---|
-| `GET /api/activities/**` | authenticated |
-| `POST` / `PUT /api/activities/**` | `SCOPE_activity:write` |
-| `DELETE /api/activities/**` | `SCOPE_activity:admin` |
-| `GET /api/workflow-entries/**` | authenticated |
-| `POST /api/users` | `SCOPE_user:write` |
-| `GET /api/users/**` | authenticated |
+| `GET /api/v1/activities/**` | authenticated |
+| `POST` / `PUT /api/v1/activities/**` | `SCOPE_activity:write` |
+| `DELETE /api/v1/activities/**` | `SCOPE_activity:admin` |
+| `GET /api/v1/workflow-entries/**` | authenticated |
+| `POST /api/v1/users` | `SCOPE_user:write` |
+| `GET /api/v1/users/**` | authenticated |
 | `/actuator/health`, `/actuator/info` | public |
 
 Expected JWT claims: `{"sub": "user-123", "scope": "activity:read activity:write"}`.
@@ -282,21 +282,21 @@ export DB_URL=jdbc:postgresql://localhost:5432/modular_monolith DB_USERNAME=post
 ```bash
 # 1. create a user (any valid JWT with scope user:write; use the script to mint one)
 TOKEN=$(python scripts/mint-local-jwt.py --sub system --scope "user:write activity:write activity:admin activity:read")
-curl -s -X POST http://localhost:8080/api/users \
+curl -s -X POST http://localhost:8080/api/v1/users \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"Alice","email":"alice@example.com"}'
 # -> 201 {"id":"...","name":"Alice",...}   (note the user id)
 
 # 2. mint a token for that user and create an activity
 TOKEN=$(python scripts/mint-local-jwt.py --sub <user-id> --scope "activity:write")
-curl -s -X POST http://localhost:8080/api/activities \
+curl -s -X POST http://localhost:8080/api/v1/activities \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"Team retro","description":"Monthly retro"}'
 # -> 201 {...}
 
 # 3. the workflow module already reacted (event-driven)
 TOKEN=$(python scripts/mint-local-jwt.py --sub <user-id> --scope "activity:read")
-curl -s http://localhost:8080/api/workflow-entries/<activity-id> -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:8080/api/v1/workflow-entries/<activity-id> -H "Authorization: Bearer $TOKEN"
 # -> 200 {"status":"CREATED",...}
 ```
 

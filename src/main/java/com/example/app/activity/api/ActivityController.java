@@ -10,7 +10,6 @@ import com.example.app.activity.application.update.UpdateActivityUseCase;
 import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.model.ActivityId;
 import com.example.app.security.CurrentUserProvider;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,7 +33,7 @@ import java.util.UUID;
  * Authorization is enforced declaratively by SecurityConfig (scope-based).
  */
 @RestController
-@RequestMapping("/api/activities")
+@RequestMapping("/activities")
 public class ActivityController {
 
     private final CreateActivityUseCase createActivityUseCase;
@@ -56,13 +55,12 @@ public class ActivityController {
     }
 
     @PostMapping
-    public ResponseEntity<ActivityResponse> create(@Valid @RequestBody CreateActivityRequest request,
-                                                   HttpServletRequest httpRequest) {
+    public ResponseEntity<ActivityResponse> create(@Valid @RequestBody CreateActivityRequest request) {
         Activity activity = createActivityUseCase.execute(
                 request.name(), request.description(), currentUserProvider.currentUser());
 
-        URI location = ServletUriComponentsBuilder.fromContextPath(httpRequest)
-                .path("/api/activities/{id}")
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
                 .buildAndExpand(activity.id().value())
                 .toUri();
         return ResponseEntity.created(location).body(ActivityResponse.from(activity));

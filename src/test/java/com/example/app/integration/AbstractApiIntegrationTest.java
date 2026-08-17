@@ -30,7 +30,7 @@ public abstract class AbstractApiIntegrationTest extends AbstractIntegrationTest
     /** Creates a user through the API and returns its id. */
     protected String createUser(String name) throws Exception {
         String email = name.toLowerCase() + "-" + UUID.randomUUID() + "@example.com";
-        MvcResult result = mockMvc.perform(post("/api/users")
+        MvcResult result = mockMvc.perform(post("/api/v1/users")
                         .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

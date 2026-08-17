@@ -14,7 +14,7 @@ import java.util.UUID;
  * All writes to this module happen through events, never through this API.
  */
 @RestController
-@RequestMapping("/api/workflow-entries")
+@RequestMapping("/workflow-entries")
 public class WorkflowController {
 
     private final GetWorkflowEntryQuery getWorkflowEntryQuery;

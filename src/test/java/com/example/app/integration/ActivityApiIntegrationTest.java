@@ -24,7 +24,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
     void createActivityReturns201WithLocationAndBody() throws Exception {
         String userId = createUser("alice");
 
-        mockMvc.perform(post("/api/activities")
+        mockMvc.perform(post("/api/v1/activities")
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -44,7 +44,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
     void createActivityWithoutWriteScopeReturns403() throws Exception {
         String userId = createUser("bob");
 
-        mockMvc.perform(post("/api/activities")
+        mockMvc.perform(post("/api/v1/activities")
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -58,7 +58,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
     void createActivityWithBlankNameReturns400WithFieldErrors() throws Exception {
         String userId = createUser("carol");
 
-        mockMvc.perform(post("/api/activities")
+        mockMvc.perform(post("/api/v1/activities")
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -72,7 +72,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void createActivityForUnknownCreatorReturns404() throws Exception {
-        mockMvc.perform(post("/api/activities")
+        mockMvc.perform(post("/api/v1/activities")
                         .with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString()).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -87,7 +87,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("dave");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(get("/api/activities/{id}", activityId)
+        mockMvc.perform(get("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(activityId))
@@ -98,7 +98,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
     void getUnknownActivityReturns404() throws Exception {
         String userId = createUser("erin");
 
-        mockMvc.perform(get("/api/activities/{id}", UUID.randomUUID())
+        mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID())
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ACTIVITY_NOT_FOUND"));
@@ -109,7 +109,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("frank");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(put("/api/activities/{id}", activityId)
+        mockMvc.perform(put("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -127,7 +127,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String activityId = createActivity(userId, "Retro");
 
         // First update succeeds (version 0 -> 1) ...
-        mockMvc.perform(put("/api/activities/{id}", activityId)
+        mockMvc.perform(put("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -136,7 +136,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
                 .andExpect(status().isOk());
 
         // ... the same version 0 is now stale -> 409
-        mockMvc.perform(put("/api/activities/{id}", activityId)
+        mockMvc.perform(put("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -151,7 +151,7 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("heidi");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(delete("/api/activities/{id}", activityId)
+        mockMvc.perform(delete("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
@@ -162,24 +162,24 @@ class ActivityApiIntegrationTest extends AbstractApiIntegrationTest {
         String userId = createUser("ivan");
         String activityId = createActivity(userId, "Retro");
 
-        mockMvc.perform(delete("/api/activities/{id}", activityId)
+        mockMvc.perform(delete("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:admin"))))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/activities/{id}", activityId)
+        mockMvc.perform(get("/api/v1/activities/{id}", activityId)
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void unauthenticatedRequestReturns401() throws Exception {
-        mockMvc.perform(get("/api/activities/{id}", UUID.randomUUID()))
+        mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     private String createActivity(String userId, String name) throws Exception {
-        var result = mockMvc.perform(post("/api/activities")
+        var result = mockMvc.perform(post("/api/v1/activities")
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

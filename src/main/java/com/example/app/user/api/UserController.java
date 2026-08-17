@@ -7,7 +7,6 @@ import com.example.app.user.application.CreateUserUseCase;
 import com.example.app.user.application.UserLookupService;
 import com.example.app.user.domain.model.User;
 import com.example.app.user.domain.model.UserId;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +25,7 @@ import java.util.UUID;
  * business module, not an Identity Provider (no credential endpoints here).
  */
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/users")
 public class UserController {
 
     private final CreateUserUseCase createUserUseCase;
@@ -41,12 +40,11 @@ public class UserController {
     }
 
     @PostMapping
-    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request,
-                                               HttpServletRequest httpRequest) {
+    public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
         User user = createUserUseCase.execute(request.name(), request.email());
 
-        URI location = ServletUriComponentsBuilder.fromContextPath(httpRequest)
-                .path("/api/users/{id}")
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
                 .buildAndExpand(user.id().value())
                 .toUri();
         return ResponseEntity.created(location).body(UserResponse.from(user));

@@ -37,7 +37,7 @@ class JwtValidationIntegrationTest extends AbstractApiIntegrationTest {
 
         String token = mint(userId, "activity:read activity:write", jwtSecret, Instant.now().plusSeconds(3600));
 
-        mockMvc.perform(post("/api/activities")
+        mockMvc.perform(post("/api/v1/activities")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -54,7 +54,7 @@ class JwtValidationIntegrationTest extends AbstractApiIntegrationTest {
 
         String token = mint(userId, "activity:read activity:write", wrongSecret, Instant.now().plusSeconds(3600));
 
-        mockMvc.perform(get("/api/activities/{id}", "00000000-0000-0000-0000-000000000001")
+        mockMvc.perform(get("/api/v1/activities/{id}", "00000000-0000-0000-0000-000000000001")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
@@ -67,14 +67,14 @@ class JwtValidationIntegrationTest extends AbstractApiIntegrationTest {
         // Expired well beyond the default 60s clock skew.
         String token = mint(userId, "activity:read", jwtSecret, Instant.now().minusSeconds(600));
 
-        mockMvc.perform(get("/api/activities/{id}", "00000000-0000-0000-0000-000000000001")
+        mockMvc.perform(get("/api/v1/activities/{id}", "00000000-0000-0000-0000-000000000001")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void garbageTokenIsRejected() throws Exception {
-        mockMvc.perform(get("/api/activities/{id}", "00000000-0000-0000-0000-000000000001")
+        mockMvc.perform(get("/api/v1/activities/{id}", "00000000-0000-0000-0000-000000000001")
                         .header("Authorization", "Bearer not.a.jwt"))
                 .andExpect(status().isUnauthorized());
     }

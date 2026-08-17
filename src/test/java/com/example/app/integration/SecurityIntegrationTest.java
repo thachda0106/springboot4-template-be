@@ -32,22 +32,22 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void unauthenticatedActivityReadReturns401() throws Exception {
-        mockMvc.perform(get("/api/activities/{id}", "00000000-0000-0000-0000-000000000001"))
+        mockMvc.perform(get("/api/v1/activities/{id}", "00000000-0000-0000-0000-000000000001"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
-                .andExpect(jsonPath("$.path").value("/api/activities/00000000-0000-0000-0000-000000000001"));
+                .andExpect(jsonPath("$.path").value("/api/v1/activities/00000000-0000-0000-0000-000000000001"));
     }
 
     @Test
     void unauthenticatedWorkflowReadReturns401() throws Exception {
-        mockMvc.perform(get("/api/workflow-entries/{id}", UUID.randomUUID()))
+        mockMvc.perform(get("/api/v1/workflow-entries/{id}", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
     void unauthenticatedUserCreateReturns401() throws Exception {
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post("/api/v1/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Alice", "email": "a@example.com"}
@@ -57,7 +57,7 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void deleteActivityWithoutAdminAuthorityReturns403() throws Exception {
-        mockMvc.perform(delete("/api/activities/{id}", UUID.randomUUID())
+        mockMvc.perform(delete("/api/v1/activities/{id}", UUID.randomUUID())
                         .with(jwt().jwt(j -> j.subject("user-x").claim("scope", "activity:read activity:write"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
@@ -65,7 +65,7 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void anyAuthenticatedUserCanReadActivities() throws Exception {
-        mockMvc.perform(get("/api/activities/{id}", UUID.randomUUID())
+        mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID())
                         .with(jwt().jwt(j -> j.subject("user-x").claim("scope", "activity:read"))))
                 // authentication passed (scope only guards the write endpoints);
                 // the id does not exist -> 404, NOT 401/403
@@ -75,7 +75,7 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void unknownPathReturns404JsonForAuthenticatedUser() throws Exception {
-        mockMvc.perform(get("/api/does-not-exist")
+        mockMvc.perform(get("/api/v1/does-not-exist")
                         .with(jwt().jwt(j -> j.subject("user-x").claim("scope", "activity:read"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));

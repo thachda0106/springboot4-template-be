@@ -19,7 +19,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void createUserReturns201() throws Exception {
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post("/api/v1/users")
                         .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -33,7 +33,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void createUserWithoutWriteScopeReturns403() throws Exception {
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post("/api/v1/users")
                         .with(jwt().jwt(j -> j.subject("system").claim("scope", "activity:read")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -44,7 +44,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void createUserWithInvalidEmailReturns400() throws Exception {
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post("/api/v1/users")
                         .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -59,7 +59,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
     void createUserWithDuplicateEmailReturns409() throws Exception {
         String email = "duplicate." + UUID.randomUUID() + "@example.com";
 
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post("/api/v1/users")
                         .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -67,7 +67,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
                                 """.formatted(email)))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/api/users")
+        mockMvc.perform(post("/api/v1/users")
                         .with(jwt().jwt(j -> j.subject("system").claim("scope", "user:write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -79,7 +79,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
 
     @Test
     void getUnknownUserReturns404() throws Exception {
-        mockMvc.perform(get("/api/users/{id}", UUID.randomUUID())
+        mockMvc.perform(get("/api/v1/users/{id}", UUID.randomUUID())
                         .with(jwt().jwt(j -> j.subject("someone").claim("scope", "activity:read"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
@@ -89,7 +89,7 @@ class UserApiIntegrationTest extends AbstractApiIntegrationTest {
     void meReturnsTheAuthenticatedUser() throws Exception {
         String userId = createUser("self");
 
-        mockMvc.perform(get("/api/users/me")
+        mockMvc.perform(get("/api/v1/users/me")
                         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:read"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(userId))

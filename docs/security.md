@@ -72,13 +72,13 @@ to authorities prefixed with `SCOPE_`. Example JWT:
 
 | Endpoint | Rule |
 |---|---|
-| `GET /api/activities/**` | `authenticated()` |
-| `POST /api/activities` | `hasAuthority("SCOPE_activity:write")` |
-| `PUT /api/activities/{id}` | `hasAuthority("SCOPE_activity:write")` |
-| `DELETE /api/activities/{id}` | `hasAuthority("SCOPE_activity:admin")` |
-| `GET /api/workflow-entries/**` | `authenticated()` |
-| `POST /api/users` | `hasAuthority("SCOPE_user:write")` |
-| `GET /api/users/**` | `authenticated()` |
+| `GET /api/v1/activities/**` | `authenticated()` |
+| `POST /api/v1/activities` | `hasAuthority("SCOPE_activity:write")` |
+| `PUT /api/v1/activities/{id}` | `hasAuthority("SCOPE_activity:write")` |
+| `DELETE /api/v1/activities/{id}` | `hasAuthority("SCOPE_activity:admin")` |
+| `GET /api/v1/workflow-entries/**` | `authenticated()` |
+| `POST /api/v1/users` | `hasAuthority("SCOPE_user:write")` |
+| `GET /api/v1/users/**` | `authenticated()` |
 | `/actuator/health`, `/actuator/info` | `permitAll()` |
 | everything else | `authenticated()` |
 
@@ -91,9 +91,9 @@ them — that is a security-module change, not a domain change.
 
 ```json
 // 401
-{ "code": "UNAUTHORIZED", "message": "Authentication is required", "timestamp": "...", "path": "/api/activities" }
+{ "code": "UNAUTHORIZED", "message": "Authentication is required", "timestamp": "...", "path": "/api/v1/activities" }
 // 403
-{ "code": "FORBIDDEN", "message": "You do not have permission to access this resource", "timestamp": "...", "path": "/api/activities" }
+{ "code": "FORBIDDEN", "message": "You do not have permission to access this resource", "timestamp": "...", "path": "/api/v1/activities" }
 ```
 
 Both use the same `ApiError` contract as every other error. No internal security details
@@ -110,7 +110,7 @@ python scripts/mint-local-jwt.py --sub <user-id> --scope "activity:read activity
 ```
 
 - The `sub` must be a user id that exists in the `users` table (create one via
-  `POST /api/users` first).
+  `POST /api/v1/users` first).
 - Default secret matches `application-local.yml`; override with `--secret` /
   `JWT_LOCAL_SECRET` if you changed it.
 - The script is stdlib-only Python; it is not part of the application and must never be
@@ -123,7 +123,7 @@ valid `JwtAuthenticationToken` with the given claims through the real filter cha
 network, no IdP:
 
 ```java
-mockMvc.perform(post("/api/activities")
+mockMvc.perform(post("/api/v1/activities")
         .with(jwt().jwt(j -> j.subject(userId).claim("scope", "activity:write")))
         ...);
 ```
