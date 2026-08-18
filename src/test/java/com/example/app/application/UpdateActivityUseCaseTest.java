@@ -7,6 +7,8 @@ import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.model.ActivityId;
 import com.example.app.activity.domain.repository.ActivityRepository;
 import com.example.app.shared.ConflictException;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -26,10 +28,16 @@ class UpdateActivityUseCaseTest {
 
     private final ActivityRepository activityRepository = mock(ActivityRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final UpdateActivityUseCase useCase =
-            new UpdateActivityUseCase(activityRepository, eventPublisher);
+            new UpdateActivityUseCase(activityRepository, eventPublisher, meterRegistry);
 
     private Activity existing;
+
+    private double lifecycle(String action) {
+        Counter counter = meterRegistry.find("app.activities.lifecycle").tag("action", action).counter();
+        return counter == null ? 0 : counter.count();
+    }
 
     @BeforeEach
     void setUp() {
@@ -52,6 +60,8 @@ class UpdateActivityUseCaseTest {
         assertThat(captor.getValue().activityId()).isEqualTo(existing.id().value());
         assertThat(captor.getValue().name()).isEqualTo("Retro Q3");
         assertThat(captor.getValue().status()).isEqualTo("ACTIVE");
+
+        assertThat(lifecycle("updated")).isEqualTo(1);
     }
 
     @Test
@@ -63,6 +73,7 @@ class UpdateActivityUseCaseTest {
 
         verify(activityRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any());
+        assertThat(lifecycle("updated")).isZero();
     }
 
     @Test
@@ -71,5 +82,7 @@ class UpdateActivityUseCaseTest {
 
         assertThatThrownBy(() -> useCase.execute(existing.id(), "Retro Q3", null, 0L))
                 .isInstanceOf(ActivityNotFoundException.class);
+
+        assertThat(lifecycle("updated")).isZero();
     }
 }

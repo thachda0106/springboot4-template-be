@@ -7,6 +7,8 @@ import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.repository.ActivityRepository;
 import com.example.app.security.CurrentUser;
 import com.example.app.user.UserLookup;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -23,17 +25,23 @@ import static org.mockito.Mockito.when;
 
 /**
  * Application-layer tests with mocked collaborators - no Spring context.
- * Verifies use-case behavior including event publication.
+ * Verifies use-case behavior including event publication and metrics.
  */
 class CreateActivityUseCaseTest {
 
     private final ActivityRepository activityRepository = mock(ActivityRepository.class);
     private final UserLookup userLookup = mock(UserLookup.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final CreateActivityUseCase useCase =
-            new CreateActivityUseCase(activityRepository, userLookup, eventPublisher);
+            new CreateActivityUseCase(activityRepository, userLookup, eventPublisher, meterRegistry);
 
     private final CurrentUser actor = CurrentUser.of("user-1");
+
+    private double lifecycle(String action) {
+        Counter counter = meterRegistry.find("app.activities.lifecycle").tag("action", action).counter();
+        return counter == null ? 0 : counter.count();
+    }
 
     @Test
     void createsActivityAndPublishesActivityCreated() {
@@ -49,6 +57,8 @@ class CreateActivityUseCaseTest {
         verify(eventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue().activityId()).isEqualTo(created.id().value());
         assertThat(captor.getValue().name()).isEqualTo("Retro");
+
+        assertThat(lifecycle("created")).isEqualTo(1);
     }
 
     @Test
@@ -60,5 +70,6 @@ class CreateActivityUseCaseTest {
 
         verify(activityRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any());
+        assertThat(lifecycle("created")).isZero();
     }
 }

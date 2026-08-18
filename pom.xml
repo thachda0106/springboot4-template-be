@@ -82,14 +82,40 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Observability: Actuator + Micrometer, Prometheus-ready -->
+        <!-- Observability: Actuator + Micrometer, Prometheus-ready.
+             Boot 4 split Micrometer metrics support into its own module
+             (spring-boot-micrometer-metrics); without it the prometheus
+             endpoint is never registered. The registry implementation
+             (micrometer-registry-prometheus) is still required. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-micrometer-metrics</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- Distributed tracing: Micrometer Tracing bridge + OpenTelemetry OTLP exporter.
+             Boot 4 splits the tracing auto-configuration into its own module
+             (spring-boot-micrometer-tracing-opentelemetry); without it no spans are
+             created and trace IDs never reach the MDC. Spans populate the MDC
+             (trace.id/span.id) for log correlation even without a collector;
+             see docs/observability.md. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-micrometer-tracing-opentelemetry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
 
         <!-- PostgreSQL driver (runtime only) -->
@@ -163,6 +189,45 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Boot 4's test infrastructure (spring-boot-micrometer-metrics-test, pulled in
+                 by spring-boot-starter-actuator-test) disables metrics export in every
+                 @SpringBootTest by default. Re-enable it so /actuator/prometheus and the
+                 business counters are exercised by the integration tests. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <spring.test.metrics.export>true</spring.test.metrics.export>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <!-- Generates git.properties (git.commit.id, git.build.time) into the runtime
+                 classpath for the /actuator/info GitInfoContributor. Bound to the
+                 initialize phase; failOnNoGitDirectory=false keeps non-git checkouts
+                 buildable (the info section is simply absent there). -->
+            <plugin>
+                <groupId>io.github.git-commit-id</groupId>
+                <artifactId>git-commit-id-maven-plugin</artifactId>
+                <version>9.0.2</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>revision</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                </configuration>
             </plugin>
         </plugins>
     </build>

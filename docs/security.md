@@ -115,6 +115,7 @@ authentication (401). The default `scope` → `SCOPE_*` mapping is kept for comp
 | `POST /api/v1/auth/login`, `/api/v1/auth/refresh` | `permitAll()` |
 | `POST /api/v1/auth/logout` | `authenticated()` |
 | `/actuator/health`, `/actuator/info` | `permitAll()` |
+| `/actuator/prometheus` | `hasAuthority("SCOPE_prometheus")` — dedicated scraper token only (see docs/observability.md) |
 | `/v3/api-docs/**`, `/v3/api-docs.yaml`, `/swagger-ui/**`, `/swagger-ui.html` | `permitAll()` — OpenAPI docs; **disabled in prod** (`springdoc.*.enabled=false`) |
 | everything else | `authenticated()` |
 
@@ -219,7 +220,8 @@ by construction.
 ## 11. Documented limitations (out of scope)
 
 - **Rate limiting / lockout**: not implemented; expected to be provided by an upstream gateway.
-- **Authentication audit metrics**: only basic structured logging; no counters/alerting.
+- **Authentication audit metrics**: login success/failure counters exist
+  (`app.auth.logins`, see docs/observability.md); no per-user audit trail or alerting.
 - **Password change / forgot-password / reset flows**: not implemented; see §9 workaround.
 - **Refresh-token family / reuse detection**: not implemented; rotation + revocation only.
 - **Cookie transport**: refresh tokens are returned in JSON for bearer clients; browser apps

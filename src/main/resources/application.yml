@@ -32,6 +32,27 @@ management:
     health:
       probes:
         enabled: true
+  tracing:
+    # Sample every request locally/test; prod overrides (see application-prod.yml).
+    sampling:
+      probability: 1.0
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          # OTLP collector endpoint. Local/test default to localhost (no collector ->
+          # export warnings, but trace IDs still populate the MDC for log correlation).
+          # Prod REQUIRES OTLP_ENDPOINT (no default) - see application-prod.yml.
+          endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+  info:
+    git:
+      enabled: true
+    build:
+      enabled: true
+    java:
+      enabled: true
+    # env is intentionally NOT enabled: /actuator/info is public and must not expose
+    # environment details (see docs/observability.md).
 
 logging:
   level:

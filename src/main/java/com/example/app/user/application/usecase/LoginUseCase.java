@@ -11,6 +11,8 @@ import com.example.app.user.domain.model.User;
 import com.example.app.user.domain.model.UserStatus;
 import com.example.app.user.domain.repository.RefreshTokenRepository;
 import com.example.app.user.domain.repository.UserRepository;
+import com.example.app.shared.AfterCommitMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,11 +39,12 @@ public class LoginUseCase {
     private final RefreshTokenFactory refreshTokenFactory;
     private final RefreshTokenPolicy refreshTokenPolicy;
     private final Clock clock;
+    private final MeterRegistry meterRegistry;
 
     public LoginUseCase(UserRepository userRepository, RefreshTokenRepository refreshTokenRepository,
                         PasswordHasher passwordHasher, AccessTokenIssuer accessTokenIssuer,
                         RefreshTokenFactory refreshTokenFactory, RefreshTokenPolicy refreshTokenPolicy,
-                        Clock clock) {
+                        Clock clock, MeterRegistry meterRegistry) {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordHasher = passwordHasher;
@@ -49,10 +52,21 @@ public class LoginUseCase {
         this.refreshTokenFactory = refreshTokenFactory;
         this.refreshTokenPolicy = refreshTokenPolicy;
         this.clock = clock;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
     public AuthResult execute(String email, String rawPassword) {
+        try {
+            return doLogin(email, rawPassword);
+        } catch (InvalidCredentialsException e) {
+            // Failed login attempt - counted immediately (no committed state to wait for).
+            meterRegistry.counter("app.auth.logins", "outcome", "failure").increment();
+            throw e;
+        }
+    }
+
+    private AuthResult doLogin(String email, String rawPassword) {
         PasswordRules.requireWithinBcryptLimit(rawPassword);
         String normalizedEmail = email.trim().toLowerCase();
         Instant now = clock.instant();
@@ -71,6 +85,9 @@ public class LoginUseCase {
                 refreshTokenFactory.issue(user.id(), refreshTokenPolicy.expiresAt(now));
         refreshTokenRepository.save(issued.token());
 
+        // Success is only counted after the transaction commits (tokens persisted).
+        AfterCommitMetrics.incrementAfterCommit(
+                meterRegistry.counter("app.auth.logins", "outcome", "success"));
         return new AuthResult(accessToken, issued.rawToken(), accessTokenIssuer.accessTokenTtl().toSeconds());
     }
 }

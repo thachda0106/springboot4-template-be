@@ -5,7 +5,9 @@ import com.example.app.activity.domain.exception.CreatorNotFoundException;
 import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.repository.ActivityRepository;
 import com.example.app.security.CurrentUser;
+import com.example.app.shared.AfterCommitMetrics;
 import com.example.app.user.UserLookup;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,12 +28,14 @@ public class CreateActivityUseCase {
     private final ActivityRepository activityRepository;
     private final UserLookup userLookup;
     private final ApplicationEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
 
     public CreateActivityUseCase(ActivityRepository activityRepository, UserLookup userLookup,
-                                 ApplicationEventPublisher eventPublisher) {
+                                 ApplicationEventPublisher eventPublisher, MeterRegistry meterRegistry) {
         this.activityRepository = activityRepository;
         this.userLookup = userLookup;
         this.eventPublisher = eventPublisher;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -43,6 +47,8 @@ public class CreateActivityUseCase {
         Activity saved = activityRepository.save(activity);
 
         eventPublisher.publishEvent(new ActivityCreated(saved.id().value(), saved.name()));
+        AfterCommitMetrics.incrementAfterCommit(
+                meterRegistry.counter("app.activities.lifecycle", "action", "created"));
         return saved;
     }
 }

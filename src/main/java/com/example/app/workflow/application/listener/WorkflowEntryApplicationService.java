@@ -1,7 +1,9 @@
 package com.example.app.workflow.application.listener;
 
+import com.example.app.shared.AfterCommitMetrics;
 import com.example.app.workflow.domain.model.WorkflowEntry;
 import com.example.app.workflow.domain.repository.WorkflowEntryRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,9 +24,12 @@ import java.util.UUID;
 public class WorkflowEntryApplicationService {
 
     private final WorkflowEntryRepository workflowEntryRepository;
+    private final MeterRegistry meterRegistry;
 
-    public WorkflowEntryApplicationService(WorkflowEntryRepository workflowEntryRepository) {
+    public WorkflowEntryApplicationService(WorkflowEntryRepository workflowEntryRepository,
+                                           MeterRegistry meterRegistry) {
         this.workflowEntryRepository = workflowEntryRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -33,6 +38,7 @@ public class WorkflowEntryApplicationService {
             return; // duplicate delivery - already processed
         }
         workflowEntryRepository.save(WorkflowEntry.forActivity(activityId, activityName));
+        countCreated();
     }
 
     @Transactional
@@ -42,6 +48,7 @@ public class WorkflowEntryApplicationService {
             // Update arrived before the create event (out-of-order delivery):
             // reconstruct the entry instead of dropping the update.
             entry = workflowEntryRepository.save(WorkflowEntry.forActivity(activityId, activityName));
+            countCreated();
         }
         entry.syncFromActivity(activityName);
         workflowEntryRepository.save(entry);
@@ -50,5 +57,11 @@ public class WorkflowEntryApplicationService {
     @Transactional
     public void onActivityDeleted(UUID activityId) {
         workflowEntryRepository.findByActivityId(activityId).ifPresent(workflowEntryRepository::delete);
+    }
+
+    /** Counts a workflow row actually persisted, after this listener's transaction commits. */
+    private void countCreated() {
+        // No reserved suffix (e.g. .created): the Prometheus client strips it, changing the exported name.
+        AfterCommitMetrics.incrementAfterCommit(meterRegistry.counter("app.workflow.entries"));
     }
 }

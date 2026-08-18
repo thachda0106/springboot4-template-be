@@ -17,7 +17,7 @@ and operational requirements justify it.
 | Architecture | Domain-Driven Design, bounded contexts, hexagonal layering per module, event-driven module communication |
 | Security | Spring Security 7.1, first-party JWT issuance (login/refresh/logout), RBAC |
 | Persistence | Spring Data JPA / Hibernate 7.4, PostgreSQL, Flyway 12 migrations |
-| Observability | Spring Boot Actuator, Micrometer, Prometheus endpoint, structured (ECS) logging in prod |
+| Observability | Spring Boot Actuator, Micrometer + Prometheus, Micrometer Tracing (OpenTelemetry), structured (ECS) logging in prod/test, request logging |
 | Testing | JUnit 5, Mockito, MockMvc, Testcontainers (real PostgreSQL) |
 
 ---
@@ -204,6 +204,7 @@ refresh and revoked on logout.
 | `POST /api/v1/auth/login`, `/api/v1/auth/refresh` | public |
 | `POST /api/v1/auth/logout` | authenticated |
 | `/actuator/health`, `/actuator/info` | public |
+| `/actuator/prometheus` | `SCOPE_prometheus` (dedicated scraper token) |
 
 Expected JWT claims: `{"sub": "user-123", "role": "ADMIN"}`.
 401 (unauthenticated) and 403 (forbidden) return the same JSON error contract.
@@ -269,9 +270,13 @@ docker compose up --build
 
 ```bash
 docker compose up -d postgres
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local        # Linux/macOS
-mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local     # Windows
+./mvnw compile spring-boot:run -Dspring-boot.run.profiles=local        # Linux/macOS
+mvnw.cmd compile spring-boot:run -Dspring-boot.run.profiles=local     # Windows
 ```
+
+> `compile` is intentional: it generates `git.properties`/`build.properties` for
+> `/actuator/info` and triggers devtools restart on code changes. See
+> [docs/observability.md](docs/observability.md).
 
 ### Option C — production-like run
 
@@ -340,6 +345,7 @@ Testcontainers (Docker required).
 │   ├── event-driven.md               event types, semantics (verified), evolution stages
 │   ├── transaction-boundaries.md     tx ownership, event timing, optimistic locking
 │   ├── security.md                   full security architecture and operations guide
+│   ├── observability.md              metrics, tracing, logging, request logging, info
 │   ├── evolution-to-microservices.md outbox/Kafka/extraction path, idempotency
 │   └── architecture-verification-report.md   versions, results, review, trade-offs
 └── src/main/java/com/example/app/
@@ -358,5 +364,6 @@ Testcontainers (Docker required).
 | [event-driven.md](docs/event-driven.md) | domain/application/integration events, verified semantics, idempotency, evolution stages |
 | [transaction-boundaries.md](docs/transaction-boundaries.md) | tx ownership, event timing, rollback, optimistic locking |
 | [security.md](docs/security.md) | authentication, authorization, JWT, 401 vs 403, local dev, production IdP |
+| [observability.md](docs/observability.md) | metrics, tracing, structured/request logging, Prometheus access, build metadata |
 | [evolution-to-microservices.md](docs/evolution-to-microservices.md) | outbox → Kafka → extraction, idempotent consumers, when NOT to extract |
 | [architecture-verification-report.md](docs/architecture-verification-report.md) | the post-implementation review: versions, verification results, trade-offs |

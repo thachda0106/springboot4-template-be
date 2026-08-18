@@ -6,11 +6,12 @@ The application validates tokens signed with the same secret in local/test mode
 production tokens are issued by the application itself (RSA, see docs/security.md).
 
 Usage:
-  python scripts/mint-local-jwt.py --sub <user-id> [--role ADMIN] [--secret SECRET] [--exp-hours 1]
+  python scripts/mint-local-jwt.py --sub <user-id> [--role ADMIN] [--scope prometheus] [--secret SECRET] [--exp-hours 1]
 
 Examples:
   python scripts/mint-local-jwt.py --sub 8f1c2e4a-0000-0000-0000-000000000001 --role ADMIN
   python scripts/mint-local-jwt.py --sub 8f1c2e4a-0000-0000-0000-000000000001 --role USER --exp-hours 0.1
+  python scripts/mint-local-jwt.py --sub scraper-1 --scope prometheus
 """
 
 import argparse
@@ -33,6 +34,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Mint an HS256 JWT for local development")
     parser.add_argument("--sub", required=True, help="JWT subject - the user id (must exist in the users table)")
     parser.add_argument("--role", default=DEFAULT_ROLE, choices=["ADMIN", "USER"], help="Role claim")
+    parser.add_argument("--scope", default=None, help="Space-separated scope claim (e.g. prometheus for the scraper token)")
     parser.add_argument("--secret", default=DEFAULT_SECRET, help="HMAC secret matching app.security.jwt.secret-key")
     parser.add_argument("--exp-hours", type=float, default=1.0, help="Token lifetime in hours")
     args = parser.parse_args()
@@ -47,6 +49,8 @@ def main() -> int:
         "iat": now,
         "exp": now + int(args.exp_hours * 3600),
     }
+    if args.scope:
+        claims["scope"] = args.scope
 
     signing_input = (
         b64url(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))

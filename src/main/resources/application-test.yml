@@ -12,3 +12,14 @@ app:
 spring:
   flyway:
     enabled: true
+
+# Deterministic observability assertions: ECS JSON logs (trace.id field) and 100% sampling.
+logging:
+  structured:
+    format:
+      console: ecs
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0

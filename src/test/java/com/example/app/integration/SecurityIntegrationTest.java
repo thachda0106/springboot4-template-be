@@ -36,9 +36,22 @@ class SecurityIntegrationTest extends AbstractApiIntegrationTest {
     }
 
     @Test
-    void actuatorPrometheusRequiresAuthentication() throws Exception {
+    void actuatorPrometheusRequiresScraperScope() throws Exception {
+        // Anonymous -> 401
         mockMvc.perform(get("/actuator/prometheus"))
                 .andExpect(status().isUnauthorized());
+
+        // Any authenticated app user (no scope claim) -> 403
+        mockMvc.perform(get("/actuator/prometheus")
+                        .with(jwt().jwt(j -> j.subject("user-x").claim("role", "USER"))
+                                .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                .andExpect(status().isForbidden());
+
+        // Dedicated scraper token (scope=prometheus) -> 200
+        mockMvc.perform(get("/actuator/prometheus")
+                        .with(jwt().jwt(j -> j.subject("scraper").claim("scope", "prometheus"))
+                                .authorities(new SimpleGrantedAuthority("SCOPE_prometheus"))))
+                .andExpect(status().isOk());
     }
 
     @Test

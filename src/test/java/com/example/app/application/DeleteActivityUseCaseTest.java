@@ -6,6 +6,8 @@ import com.example.app.activity.domain.exception.ActivityNotFoundException;
 import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.model.ActivityId;
 import com.example.app.activity.domain.repository.ActivityRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,8 +26,14 @@ class DeleteActivityUseCaseTest {
 
     private final ActivityRepository activityRepository = mock(ActivityRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final DeleteActivityUseCase useCase =
-            new DeleteActivityUseCase(activityRepository, eventPublisher);
+            new DeleteActivityUseCase(activityRepository, eventPublisher, meterRegistry);
+
+    private double lifecycle(String action) {
+        Counter counter = meterRegistry.find("app.activities.lifecycle").tag("action", action).counter();
+        return counter == null ? 0 : counter.count();
+    }
 
     @Test
     void deletesActivityAndPublishesActivityDeleted() {
@@ -39,6 +47,8 @@ class DeleteActivityUseCaseTest {
         ArgumentCaptor<ActivityDeleted> captor = ArgumentCaptor.forClass(ActivityDeleted.class);
         verify(eventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue().activityId()).isEqualTo(existing.id().value());
+
+        assertThat(lifecycle("deleted")).isEqualTo(1);
     }
 
     @Test
@@ -51,5 +61,6 @@ class DeleteActivityUseCaseTest {
 
         verify(activityRepository, never()).delete(any());
         verify(eventPublisher, never()).publishEvent(any());
+        assertThat(lifecycle("deleted")).isZero();
     }
 }

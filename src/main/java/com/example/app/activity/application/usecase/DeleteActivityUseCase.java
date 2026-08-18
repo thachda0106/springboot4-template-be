@@ -5,6 +5,8 @@ import com.example.app.activity.domain.exception.ActivityNotFoundException;
 import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.model.ActivityId;
 import com.example.app.activity.domain.repository.ActivityRepository;
+import com.example.app.shared.AfterCommitMetrics;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,10 +19,13 @@ public class DeleteActivityUseCase {
 
     private final ActivityRepository activityRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
 
-    public DeleteActivityUseCase(ActivityRepository activityRepository, ApplicationEventPublisher eventPublisher) {
+    public DeleteActivityUseCase(ActivityRepository activityRepository, ApplicationEventPublisher eventPublisher,
+                                 MeterRegistry meterRegistry) {
         this.activityRepository = activityRepository;
         this.eventPublisher = eventPublisher;
+        this.meterRegistry = meterRegistry;
     }
 
     @Transactional
@@ -30,5 +35,7 @@ public class DeleteActivityUseCase {
 
         activityRepository.delete(activity.id());
         eventPublisher.publishEvent(new ActivityDeleted(id.value()));
+        AfterCommitMetrics.incrementAfterCommit(
+                meterRegistry.counter("app.activities.lifecycle", "action", "deleted"));
     }
 }

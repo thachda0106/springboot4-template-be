@@ -14,6 +14,8 @@ import com.example.app.user.domain.model.UserRole;
 import com.example.app.user.domain.model.UserStatus;
 import com.example.app.user.domain.repository.RefreshTokenRepository;
 import com.example.app.user.domain.repository.UserRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -42,10 +44,16 @@ class LoginUseCaseTest {
     private final RefreshTokenFactory refreshTokenFactory = new RefreshTokenFactory();
     private final RefreshTokenPolicy refreshTokenPolicy = new RefreshTokenPolicy(Duration.ofDays(7));
     private final Clock clock = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private final LoginUseCase useCase = new LoginUseCase(
             userRepository, refreshTokenRepository, passwordHasher, accessTokenIssuer,
-            refreshTokenFactory, refreshTokenPolicy, clock);
+            refreshTokenFactory, refreshTokenPolicy, clock, meterRegistry);
+
+    private double logins(String outcome) {
+        Counter counter = meterRegistry.find("app.auth.logins").tag("outcome", outcome).counter();
+        return counter == null ? 0 : counter.count();
+    }
 
     private User activeUser(String email) {
         return User.restore(UserId.random(), "Alice", email, UserStatus.ACTIVE,
@@ -66,6 +74,8 @@ class LoginUseCaseTest {
         assertThat(result.refreshToken()).isNotBlank();
         assertThat(result.expiresInSeconds()).isEqualTo(900);
         verify(refreshTokenRepository).save(any());
+        assertThat(logins("success")).isEqualTo(1);
+        assertThat(logins("failure")).isZero();
     }
 
     @Test
@@ -77,6 +87,8 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> useCase.execute("alice@example.com", "wrong"))
                 .isInstanceOf(InvalidCredentialsException.class);
         verify(refreshTokenRepository, never()).save(any());
+        assertThat(logins("failure")).isEqualTo(1);
+        assertThat(logins("success")).isZero();
     }
 
     @Test
@@ -86,6 +98,7 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> useCase.execute("ghost@example.com", "whatever"))
                 .isInstanceOf(InvalidCredentialsException.class);
         verify(passwordHasher).matches(any(), any()); // dummy-hash compare still runs
+        assertThat(logins("failure")).isEqualTo(1);
     }
 
     @Test
@@ -96,6 +109,7 @@ class LoginUseCaseTest {
 
         assertThatThrownBy(() -> useCase.execute("alice@example.com", "secret"))
                 .isInstanceOf(InvalidCredentialsException.class);
+        assertThat(logins("failure")).isEqualTo(1);
     }
 
     @Test
@@ -106,6 +120,7 @@ class LoginUseCaseTest {
 
         assertThatThrownBy(() -> useCase.execute("alice@example.com", "secret"))
                 .isInstanceOf(InvalidCredentialsException.class);
+        assertThat(logins("failure")).isEqualTo(1);
     }
 
     @Test
@@ -113,5 +128,8 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> useCase.execute("alice@example.com", "x".repeat(100)))
                 .isInstanceOf(InvalidUserException.class);
         verify(userRepository, never()).findByEmail(any());
+        // Validation error - not a failed login attempt.
+        assertThat(logins("success")).isZero();
+        assertThat(logins("failure")).isZero();
     }
 }
