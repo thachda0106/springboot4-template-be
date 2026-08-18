@@ -14,4 +14,7 @@ target/
 logs/
 *.log
 
+# Local observability scraper token (never commit a bearer token)
+.observability/
+
 .serena

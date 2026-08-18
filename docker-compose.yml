@@ -33,5 +33,37 @@ services:
       postgres:
         condition: service_healthy
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.66.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:4318:4318"   # OTLP HTTP ingest (loopback only; matches app default endpoint)
+      - "127.0.0.1:16686:16686" # Jaeger UI (loopback only)
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:9090:9090"   # Prometheus UI (loopback only)
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Scraper bearer token: created by scripts/observability-up.sh (gitignored).
+      - ./.observability/scraper-token:/etc/prometheus/scraper-token:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Linux; no-op on Docker Desktop
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:3000:3000"   # Grafana UI (loopback only)
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true" # loopback-bound => localhost-only viewer
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+
 volumes:
   postgres-data:

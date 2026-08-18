@@ -126,3 +126,48 @@ Then:
 - `GET /actuator/info` → git/build/java (public)
 - `GET /actuator/prometheus` → 401 anonymous / 403 user / 200 with a scraper token
 - Every request produces one log line with `[traceId-spanId]`
+
+### Local observability UI (Jaeger + Prometheus + Grafana)
+
+A compose profile brings up a full browser-facing stack for the **native-run** app above
+(no application code changes — the app's OTLP default already targets `localhost:4318`, which
+Jaeger publishes). It starts **only** the three observability services; `postgres`/`app` are
+never started by it.
+
+**Prereqs:** Docker (compose v2), git-bash (`bash`, `python`, `curl`), and the native app
+running and reachable on `:8080` before scraping.
+
+```bash
+./scripts/observability-up.sh   # mints a scraper token, starts jaeger+prometheus+grafana
+```
+
+The helper:
+- mints a **scope-only** scraper token (`--role NONE --scope prometheus`) — exactly
+  `SCOPE_prometheus`, no `ROLE_*` authority — into `.observability/scraper-token`
+  (gitignored, mode `0600`, 30-day TTL; **re-run the script to rotate**). It passes
+  `JWT_LOCAL_SECRET` through, so a custom local secret still yields a valid token.
+- starts `docker compose --profile observability up -d prometheus jaeger grafana` and waits
+  for each to be reachable on its loopback port. It never prints the token.
+
+| Service | URL (loopback only) | What to look for |
+|---|---|---|
+| Jaeger | http://localhost:16686 | search `service=modular-monolith` → a trace per API request |
+| Prometheus | http://localhost:9090 | `up{job="modular-monolith"}` = 1, business counters, request rate |
+| Grafana | http://localhost:3000 | provisioned `modular-monolith` dashboard (counters + request rate) |
+
+All observability ports bind to `127.0.0.1` only — nothing is exposed on the LAN. Grafana
+runs as an anonymous **viewer** for local convenience; Prometheus scrapes with the bearer token
+from `.observability/scraper-token`.
+
+**Cleanup:** `docker compose --profile observability down` — telemetry data is ephemeral by
+design (no volumes); counters reset on app restart and the workflow counter is listener-local
+(in-process, lost on a crash) — see [Metrics](#metrics).
+
+**Full-compose caveat:** this profile targets the native-run workflow. If you run the compose
+`app` service instead, set `OTLP_ENDPOINT` and adjust the Prometheus scrape target (the
+`app:8080` service DNS) — the job above points at `host.docker.internal:8080`.
+
+**Troubleshooting:** checks are eventually consistent — wait ≥15s (one scrape interval) plus a
+few seconds for async OTLP export before looking. `host.docker.internal` requires the
+`extra_hosts: host-gateway` entry on Linux (already in `docker-compose.yml`). Port collisions
+(4318/16686/9090/3000) with other local tools are possible.

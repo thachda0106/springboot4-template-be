@@ -120,6 +120,35 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
     }
 
     @Test
+    void scraperTokenIsLeastPrivilege() throws Exception {
+        // A scope-only token (no role claim) may scrape metrics but must not reach any
+        // role-gated business endpoint: RoleJwtAuthenticationConverter grants ROLE_* only
+        // from a known role claim, so scope=prometheus alone yields just SCOPE_prometheus.
+        var scraped = jwt().jwt(j -> j.subject("scraper-1").claim("scope", "prometheus"))
+                .authorities(new SimpleGrantedAuthority("SCOPE_prometheus"));
+
+        mockMvc.perform(get("/actuator/prometheus").with(scraped))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/users").with(scraped)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"X","email":"x@example.com","password":"s3cret-pass","role":"USER"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/activities").with(scraped)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Retro"}
+                                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete("/api/v1/activities/{id}", UUID.randomUUID()).with(scraped))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void activityLifecycleMetricReflectsApiCall() throws Exception {
         String userId = createUserWithPassword("Alice", "alice." + UUID.randomUUID() + "@example.com",
                 "s3cret-pass", "USER");
