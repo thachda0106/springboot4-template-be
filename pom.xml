@@ -121,6 +121,14 @@
             <version>${springdoc.version}</version>
         </dependency>
 
+        <!-- Dev: automatic restart on code changes -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
