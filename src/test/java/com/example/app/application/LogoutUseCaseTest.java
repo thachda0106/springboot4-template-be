@@ -1,7 +1,7 @@
 package com.example.app.application;
 
-import com.example.app.user.application.LogoutUseCase;
-import com.example.app.user.application.RefreshTokenFactory;
+import com.example.app.user.application.factory.RefreshTokenFactory;
+import com.example.app.user.application.usecase.LogoutUseCase;
 import com.example.app.user.domain.model.RefreshToken;
 import com.example.app.user.domain.model.RefreshTokenId;
 import com.example.app.user.domain.model.UserId;

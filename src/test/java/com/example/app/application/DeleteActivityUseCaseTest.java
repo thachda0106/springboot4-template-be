@@ -1,6 +1,6 @@
 package com.example.app.application;
 
-import com.example.app.activity.application.delete.DeleteActivityUseCase;
+import com.example.app.activity.application.usecase.DeleteActivityUseCase;
 import com.example.app.activity.domain.event.ActivityDeleted;
 import com.example.app.activity.domain.exception.ActivityNotFoundException;
 import com.example.app.activity.domain.model.Activity;

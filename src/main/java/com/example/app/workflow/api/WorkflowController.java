@@ -1,7 +1,7 @@
 package com.example.app.workflow.api;
 
 import com.example.app.workflow.api.dto.WorkflowEntryResponse;
-import com.example.app.workflow.application.GetWorkflowEntryQuery;
+import com.example.app.workflow.application.query.GetWorkflowEntryQuery;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;

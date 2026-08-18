@@ -1,6 +1,6 @@
 package com.example.app.unit;
 
-import com.example.app.security.SecurityModeValidator;
+import com.example.app.security.jwt.SecurityModeValidator;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;

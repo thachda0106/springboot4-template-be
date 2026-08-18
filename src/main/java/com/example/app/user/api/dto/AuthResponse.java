@@ -1,6 +1,6 @@
 package com.example.app.user.api.dto;
 
-import com.example.app.user.application.AuthResult;
+import com.example.app.user.application.result.AuthResult;
 
 /** Token pair returned by login and refresh. */
 public record AuthResponse(

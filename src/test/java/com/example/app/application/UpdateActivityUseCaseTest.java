@@ -1,6 +1,6 @@
 package com.example.app.application;
 
-import com.example.app.activity.application.update.UpdateActivityUseCase;
+import com.example.app.activity.application.usecase.UpdateActivityUseCase;
 import com.example.app.activity.domain.event.ActivityUpdated;
 import com.example.app.activity.domain.exception.ActivityNotFoundException;
 import com.example.app.activity.domain.model.Activity;

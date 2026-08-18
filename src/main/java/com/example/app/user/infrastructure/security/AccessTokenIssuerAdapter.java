@@ -1,6 +1,6 @@
 package com.example.app.user.infrastructure.security;
 
-import com.example.app.security.JwtTokenService;
+import com.example.app.security.jwt.JwtTokenService;
 import com.example.app.user.application.port.AccessTokenIssuer;
 import org.springframework.stereotype.Component;
 

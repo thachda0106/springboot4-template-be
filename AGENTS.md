@@ -16,14 +16,27 @@ Modulith modules, one PostgreSQL DB, OAuth2 Resource Server (JWT). Java 21, Mave
 - Modules: `activity`, `workflow`, `user` (bounded contexts) + `security`, `shared`. **No global
   `controller/`/`service/`/`repository/` packages.** Each module: `api/`, `application/`,
   `domain/`, `infrastructure/persistence/`.
+- **Standard module layout (DDD + concern grouping) — all future code must follow it:**
+  - Business modules (`user`, `activity`, `workflow`): `application/` is **grouped by concern**,
+    never flat: `usecase/` (command orchestrators), `query/` (read paths), `port/`
+    (application-owned interfaces implemented by adapters), `policy/` (config-driven rules,
+    e.g. TTL, BCrypt limits), `factory/` (aggregate/token factories), `bootstrap/`
+    (startup provisioning), `config/` (application-layer `@Configuration`), `result/`
+    (use-case result records), `listener/` (event consumers + the services they delegate to).
+    Use only the groups that apply; a flat `application/` or ad-hoc grouping is a violation.
+  - `security` is a technical module, not a DDD context: the module **root is its public API**
+    (`CurrentUser`, `CurrentUserProvider`, `SecurityContextCurrentUserProvider`); internals are
+    grouped: `jwt/` (issuance + validation — exposed to `user` via `@NamedInterface("jwt")`,
+    declared as `security::jwt` in the consumer's `allowedDependencies`), `config/`
+    (`SecurityConfig`, `PasswordEncoderConfig`), `web/` (401/403 handlers).
+  - `shared` stays **intentionally flat**: `ApiError`, `GlobalExceptionHandler`,
+    `ConflictException`, `ApiPathPrefixConfig`. No sub-packages, no business types.
 - Boundaries are **enforced at test time** by `ApplicationModularityTests` (`verify()`) and
   `ModuleViolationDetectionTests`. Breaking a boundary fails the build.
 - **Adding a module**: create `com.example.app.<name>/` with `package-info.java`
   `@ApplicationModule(allowedDependencies = {...})`, expose cross-module contracts via root
   package or `@NamedInterface`, **and** add it to the expected-modules assertion in
   `ApplicationModularityTests` (currently exactly: activity, workflow, user, security, shared).
-- `shared` is intentionally tiny: `ApiError`, `GlobalExceptionHandler`, `ConflictException`,
-  `ApiPathPrefixConfig`. No business types there.
 - Module `@RestControllerAdvice` handlers **must** be `@Order(Ordered.HIGHEST_PRECEDENCE)` —
   otherwise the shared `Exception` catch-all wins and business errors become 500s.
 - Domain is plain Java (no Spring/JPA/Security annotations). JPA entities + mappers live in

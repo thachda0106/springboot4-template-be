@@ -10,7 +10,7 @@
  * is the contract other modules may use for synchronous lookups. Internals are
  * in the api/application/domain/infrastructure sub-packages.
  */
-@ApplicationModule(allowedDependencies = {"security", "shared"})
+@ApplicationModule(allowedDependencies = {"security", "security::jwt", "shared"})
 package com.example.app.user;
 
 import org.springframework.modulith.ApplicationModule;

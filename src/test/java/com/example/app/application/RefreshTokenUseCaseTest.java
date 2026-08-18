@@ -1,10 +1,10 @@
 package com.example.app.application;
 
-import com.example.app.user.application.AuthResult;
-import com.example.app.user.application.RefreshTokenFactory;
-import com.example.app.user.application.RefreshTokenPolicy;
-import com.example.app.user.application.RefreshTokenUseCase;
+import com.example.app.user.application.factory.RefreshTokenFactory;
+import com.example.app.user.application.policy.RefreshTokenPolicy;
 import com.example.app.user.application.port.AccessTokenIssuer;
+import com.example.app.user.application.result.AuthResult;
+import com.example.app.user.application.usecase.RefreshTokenUseCase;
 import com.example.app.user.domain.exception.InvalidRefreshTokenException;
 import com.example.app.user.domain.model.RefreshToken;
 import com.example.app.user.domain.model.RefreshTokenId;

@@ -1,6 +1,6 @@
 package com.example.app.application;
 
-import com.example.app.activity.application.create.CreateActivityUseCase;
+import com.example.app.activity.application.usecase.CreateActivityUseCase;
 import com.example.app.activity.domain.event.ActivityCreated;
 import com.example.app.activity.domain.exception.CreatorNotFoundException;
 import com.example.app.activity.domain.model.Activity;

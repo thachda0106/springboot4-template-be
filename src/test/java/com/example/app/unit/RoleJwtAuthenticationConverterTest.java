@@ -1,6 +1,6 @@
 package com.example.app.unit;
 
-import com.example.app.security.RoleJwtAuthenticationConverter;
+import com.example.app.security.jwt.RoleJwtAuthenticationConverter;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
