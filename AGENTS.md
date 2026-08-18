@@ -30,7 +30,8 @@ Modulith modules, one PostgreSQL DB, OAuth2 Resource Server (JWT). Java 21, Mave
     declared as `security::jwt` in the consumer's `allowedDependencies`), `config/`
     (`SecurityConfig`, `PasswordEncoderConfig`), `web/` (401/403 handlers).
   - `shared` stays **intentionally flat**: `ApiError`, `GlobalExceptionHandler`,
-    `ConflictException`, `ApiPathPrefixConfig`. No sub-packages, no business types.
+    `ConflictException`, `ApiPathPrefixConfig`, `OpenApiConfig` (OpenAPI/Swagger UI docs,
+    JWT bearer scheme). No sub-packages, no business types.
 - Boundaries are **enforced at test time** by `ApplicationModularityTests` (`verify()`) and
   `ModuleViolationDetectionTests`. Breaking a boundary fails the build.
 - **Adding a module**: create `com.example.app.<name>/` with `package-info.java`
@@ -50,7 +51,9 @@ Modulith modules, one PostgreSQL DB, OAuth2 Resource Server (JWT). Java 21, Mave
 ## API conventions
 
 - Global prefix `/api/v1` is applied centrally in `shared/ApiPathPrefixConfig`
-  (`addPathPrefix` for `@RestController`). Controllers declare **resource-relative** paths
+  (`addPathPrefix` for `@RestController` in `com.example.app` packages only — library
+  controllers like springdoc's `/v3/api-docs` must keep their framework paths). Controllers
+  declare **resource-relative** paths
   (e.g. `@RequestMapping("/activities")`) — do **not** hardcode `/api/v1` in controllers.
   `SecurityConfig` matchers use the full `/api/v1/...` paths.
 - Error contract: `ApiError` record (`code/message/timestamp/path/fieldErrors`); 400/401/403/404/409

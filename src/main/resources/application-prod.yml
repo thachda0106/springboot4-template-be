@@ -23,6 +23,13 @@ app:
     admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
+springdoc:
+  # API docs (Swagger UI) are dev/test tooling — never expose them in production.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 logging:
   structured:
     format:

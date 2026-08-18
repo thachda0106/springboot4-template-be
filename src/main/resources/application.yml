@@ -15,6 +15,14 @@ spring:
   jackson:
     default-property-inclusion: non_null
 
+# API documentation (OpenAPI spec + Swagger UI). Paths are explicit here;
+# prod disables the endpoints entirely (see application-prod.yml).
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
 management:
   endpoints:
     web:

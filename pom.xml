@@ -22,6 +22,9 @@
         <!-- Boot 4.1.0 BOM pins Flyway 12.4.0, whose PostgreSQL support window predates
              PG 16.14/17.10 (FlywayException: Unsupported Database). Newest 12.x line. -->
         <flyway.version>12.11.0</flyway.version>
+        <!-- springdoc 3.x is the Spring Boot 4 / Framework 7 line; 3.1.0 targets Boot 4.1.0.
+             Do NOT downgrade to the 2.x line (Boot 3 only). -->
+        <springdoc.version>3.1.0</springdoc.version>
     </properties>
 
     <dependencyManagement>
@@ -109,6 +112,13 @@
         <dependency>
             <groupId>org.springframework.modulith</groupId>
             <artifactId>spring-modulith-events-api</artifactId>
+        </dependency>
+
+        <!-- API documentation: OpenAPI spec + Swagger UI (springdoc 3.x = Boot 4 line) -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <!-- Test -->

@@ -115,6 +115,7 @@ authentication (401). The default `scope` → `SCOPE_*` mapping is kept for comp
 | `POST /api/v1/auth/login`, `/api/v1/auth/refresh` | `permitAll()` |
 | `POST /api/v1/auth/logout` | `authenticated()` |
 | `/actuator/health`, `/actuator/info` | `permitAll()` |
+| `/v3/api-docs/**`, `/v3/api-docs.yaml`, `/swagger-ui/**`, `/swagger-ui.html` | `permitAll()` — OpenAPI docs; **disabled in prod** (`springdoc.*.enabled=false`) |
 | everything else | `authenticated()` |
 
 The fallback `authenticated()` requires authentication; role rules are added per endpoint in

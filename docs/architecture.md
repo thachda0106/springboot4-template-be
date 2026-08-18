@@ -20,7 +20,7 @@ and the known trade-offs.
 │   └────────────────────────────┴──────────────────────┘      │
 │                                                              │
 │   security (OAuth2 Resource Server, CurrentUser)             │
-│   shared   (ApiError, technical error handling)              │
+│   shared   (ApiError, error handling, OpenAPI docs)          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,7 +111,8 @@ module, and (via the whitelist) any dependency not listed above. See
 - **security** — root package: `CurrentUser`, `CurrentUserProvider`. The single
   technical abstraction every module may use; no module ever touches
   `SecurityContext`/`Jwt`/`Authentication` directly.
-- **shared** — root package: `ApiError` + `GlobalExceptionHandler` + `ConflictException`.
+- **shared** — root package: `ApiError` + `GlobalExceptionHandler` + `ConflictException`
+  + `OpenApiConfig` (OpenAPI/Swagger UI docs, JWT bearer scheme).
   Cross-cutting *technical* concerns only.
 
 ## 6. Security architecture (summary)
