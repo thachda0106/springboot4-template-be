@@ -5,6 +5,7 @@ spring:
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:123456}
 
+
 app:
   security:
     jwt:
@@ -16,6 +17,11 @@ app:
       audience: modular-monolith
       access-token-ttl: 15m
       refresh-token-ttl: 7d
+
+  bootstrap:
+    # Optional: provision the first ADMIN user on a fresh deployment.
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin}
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:admin}
 
 logging:
   level:

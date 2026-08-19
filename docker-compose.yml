@@ -37,10 +37,27 @@ services:
     image: jaegertracing/all-in-one:1.66.0
     profiles: ["observability"]
     ports:
-      - "127.0.0.1:4318:4318"   # OTLP HTTP ingest (loopback only; matches app default endpoint)
       - "127.0.0.1:16686:16686" # Jaeger UI (loopback only)
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      # Internal admin/health port (not published); same pattern as postgres.
+      test: ["CMD", "wget", "--spider", "-q", "localhost:14269"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.159.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:4318:4318"   # OTLP HTTP ingest (loopback only; takes over Jaeger's old host port)
+      - "127.0.0.1:13133:13133" # health_check extension (loopback only; readiness probe)
+    volumes:
+      - ./observability/otelcol-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      jaeger:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:v2.55.0

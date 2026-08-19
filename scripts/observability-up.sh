@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Bring up the local observability UI stack (Jaeger + Prometheus + Grafana) for the
-# native-run app (docker compose up -d postgres; mvnw.cmd spring-boot:run ...).
+# Bring up the local observability UI stack (Jaeger + OpenTelemetry Collector + Prometheus
+# + Grafana) for the native-run app (docker compose up -d postgres; mvnw.cmd spring-boot:run ...).
 #
-# Starts ONLY the three observability services (explicit service list - never the
+# Starts ONLY the four observability services (explicit service list - never the
 # compose app/postgres). Mints a scope-only scraper token into .observability/
 # (gitignored, mode 0600) for /actuator/prometheus.
 set -euo pipefail
@@ -22,7 +22,7 @@ python scripts/mint-local-jwt.py \
   --exp-hours 720 > .observability/scraper-token
 chmod 600 .observability/scraper-token
 
-docker compose --profile observability up -d prometheus jaeger grafana
+docker compose --profile observability up -d prometheus jaeger grafana otel-collector
 
 wait_for() { # bounded host-side readiness (services are reachable via loopback)
   local url="$1" name="$2"
@@ -36,8 +36,10 @@ wait_for() { # bounded host-side readiness (services are reachable via loopback)
 wait_for http://localhost:9090/-/healthy "Prometheus"
 wait_for http://localhost:3000/api/health "Grafana"
 wait_for http://localhost:16686/ "Jaeger"
+wait_for http://localhost:13133 "Collector"
 
 echo "Observability UI stack up (localhost only):"
 echo "  Jaeger      http://localhost:16686"
 echo "  Prometheus  http://localhost:9090"
 echo "  Grafana     http://localhost:3000"
+echo "  Collector   http://localhost:4318 (OTLP ingest), http://localhost:13133 (health)"

@@ -1,0 +1,42 @@
+# Local OpenTelemetry Collector: receives OTLP from the native app (host :4318) and
+# forwards spans to Jaeger over gRPC on the compose network (jaeger:4317).
+# Traces-only pipeline; metrics stay pull-based (Prometheus scrapes the app directly).
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  batch:
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    # Explicit bind: 0.159.0 defaults to localhost:13133, which would be unreachable
+    # through the published host port (script readiness check).
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      # DEBUG makes per-batch receive/export lines visible in `docker compose logs
+      # otel-collector` (per-batch logging is DEBUG-only).
+      level: debug
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]

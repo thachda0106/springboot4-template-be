@@ -47,8 +47,11 @@ Notes:
 - **Sampling**: `management.tracing.sampling.probability` — `1.0` in `local`/`test`,
   `0.1` (overridable via `TRACING_SAMPLING_PROBABILITY`) in `prod`.
 - **Export**: OTLP HTTP/protobuf to `management.opentelemetry.tracing.export.otlp.endpoint`.
-  - `local`/`test`: defaults to `http://localhost:4318/v1/traces` (no collector → export
-    warnings, but spans still populate the MDC so log correlation works).
+  - `local`/`test`: defaults to `http://localhost:4318/v1/traces`. With the observability
+    profile **up**, the OTLP Collector listens on `:4318` and forwards spans to Jaeger
+    (app → collector → jaeger). With the profile **down** (and always in `test`, which never
+    runs a collector) there is no collector → export warnings, but spans still populate the
+    MDC so log correlation works.
   - `prod`: **`OTLP_ENDPOINT` is required** (no localhost default). Use HTTPS and, if the
     collector requires auth, set the `headers` map from environment variables. If unset,
     spans are created but **not exported** (fail-open) — telemetry is silently dropped.
@@ -127,18 +130,18 @@ Then:
 - `GET /actuator/prometheus` → 401 anonymous / 403 user / 200 with a scraper token
 - Every request produces one log line with `[traceId-spanId]`
 
-### Local observability UI (Jaeger + Prometheus + Grafana)
+### Local observability UI (Jaeger + Collector + Prometheus + Grafana)
 
 A compose profile brings up a full browser-facing stack for the **native-run** app above
 (no application code changes — the app's OTLP default already targets `localhost:4318`, which
-Jaeger publishes). It starts **only** the three observability services; `postgres`/`app` are
-never started by it.
+the collector publishes). It starts **only** the four observability services; `postgres`/`app`
+are never started by it.
 
 **Prereqs:** Docker (compose v2), git-bash (`bash`, `python`, `curl`), and the native app
 running and reachable on `:8080` before scraping.
 
 ```bash
-./scripts/observability-up.sh   # mints a scraper token, starts jaeger+prometheus+grafana
+./scripts/observability-up.sh   # mints a scraper token, starts jaeger+collector+prometheus+grafana
 ```
 
 The helper:
@@ -146,12 +149,17 @@ The helper:
   `SCOPE_prometheus`, no `ROLE_*` authority — into `.observability/scraper-token`
   (gitignored, mode `0600`, 30-day TTL; **re-run the script to rotate**). It passes
   `JWT_LOCAL_SECRET` through, so a custom local secret still yields a valid token.
-- starts `docker compose --profile observability up -d prometheus jaeger grafana` and waits
-  for each to be reachable on its loopback port. It never prints the token.
+- starts `docker compose --profile observability up -d prometheus jaeger grafana
+  otel-collector` and waits for each to be reachable on its loopback port. It never prints
+  the token.
+
+Trace path: `app --OTLP HTTP :4318--> otel-collector --OTLP gRPC jaeger:4317--> jaeger`
+(the collector → Jaeger hop is internal to the compose network).
 
 | Service | URL (loopback only) | What to look for |
 |---|---|---|
 | Jaeger | http://localhost:16686 | search `service=modular-monolith` → a trace per API request |
+| Collector | http://localhost:4318 (OTLP ingest), http://localhost:13133 (health) | span flow is proven end-to-end in Jaeger; `docker compose --profile observability logs otel-collector` shows DEBUG memory-limiter/health lines (the collector does not log per-batch lines) |
 | Prometheus | http://localhost:9090 | `up{job="modular-monolith"}` = 1, business counters, request rate |
 | Grafana | http://localhost:3000 | provisioned `modular-monolith` dashboard (counters + request rate) |
 
@@ -167,7 +175,13 @@ design (no volumes); counters reset on app restart and the workflow counter is l
 `app` service instead, set `OTLP_ENDPOINT` and adjust the Prometheus scrape target (the
 `app:8080` service DNS) — the job above points at `host.docker.internal:8080`.
 
-**Troubleshooting:** checks are eventually consistent — wait ≥15s (one scrape interval) plus a
-few seconds for async OTLP export before looking. `host.docker.internal` requires the
-`extra_hosts: host-gateway` entry on Linux (already in `docker-compose.yml`). Port collisions
-(4318/16686/9090/3000) with other local tools are possible.
+**Troubleshooting:** checks are eventually consistent — batch default timeout is 200ms plus
+Jaeger's indexing delay, so wait ≥15s (one scrape interval) plus a few seconds for async OTLP
+export before looking. To prove the span path, search Jaeger for `service=modular-monolith`:
+since Jaeger no longer publishes `:4318`, a trace there can only have arrived via the
+collector. Collector issues show up as `docker compose --profile observability logs
+otel-collector` startup/error lines or as a failed readiness check on `:13133`; spans are
+dropped fail-open if the collector or Jaeger is down, exactly as when no collector was
+present. `host.docker.internal` requires the `extra_hosts: host-gateway` entry on Linux
+(already in `docker-compose.yml`). Port collisions (4318/13133/16686/9090/3000) with other
+local tools are possible.
