@@ -54,6 +54,15 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        readiness:
+          # Readiness must track the dependency the instance actually needs: without
+          # the DB the instance must not receive traffic (503 on the probe), even
+          # though the process is up.
+          include: readinessState,db
+          # Probe groups hide components by default; expose them so operators can
+          # tell whether the DB or the application state is the reason for 503.
+          show-components: always
   tracing:
     # Sample every request locally/test; prod overrides (see application-prod.yml).
     sampling:
@@ -76,7 +85,30 @@ management:
     # env is intentionally NOT enabled: /actuator/info is public and must not expose
     # environment details (see docs/observability.md).
 
+jdbc:
+  # JDBC query spans (datasource-micrometer, OTel semantic conventions v1.39):
+  # every query executed through the (proxied) DataSource becomes a span nested under
+  # the request span, with db.system.name/db.operation.name and a SANITIZED
+  # db.query.text (literals scrubbed; bind parameter values are never captured -
+  # SQL predicates carry user data, see docs/observability.md "SQL spans").
+  includes: QUERY # OTel covers query execution only; skip CONNECTION/FETCH/KEYS noise
+  opentelemetry:
+    spans:
+      enabled: true
+    metrics:
+      enabled: false # DB metrics already covered by the HikariCP meters
+    analysis:
+      sanitize:
+        enabled: true
+
 logging:
+  # Standard console pattern (human-readable default for every profile). ISO-8601
+  # timestamp, level, thread, trace/span ids (W3C trace context from the MDC) and
+  # logger. test/prod override this entirely with ECS structured logging
+  # (logging.structured.format.console: ecs) - structured output takes precedence
+  # over the pattern properties.
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{traceId:-},%X{spanId:-}] %logger{40} - %msg%n"
   level:
     com.example.app: INFO
 

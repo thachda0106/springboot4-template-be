@@ -3,6 +3,7 @@ package com.example.app.integration;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.example.app.security.web.RequestLoggingFilter;
+import com.example.app.shared.AfterCommitMetrics;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 import java.util.HashMap;
 import java.util.List;
@@ -48,6 +52,9 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
 
     @Autowired
     private MeterRegistry meterRegistry;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void attachLogAppenders() {
@@ -263,6 +270,31 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
     }
 
     @Test
+    void afterCommitSynchronizationIncrementsOnCommit() {
+        // Real transaction against the Testcontainers DB: the synchronization registered
+        // by AfterCommitMetrics must fire after commit (the branch the HTTP-level tests
+        // cannot isolate - the API tests only observe the net effect).
+        Counter deleted = meterRegistry.counter("app.activities.lifecycle", "action", "deleted");
+        double before = deleted.count();
+        TransactionStatus tx = transactionManager.getTransaction(new DefaultTransactionDefinition());
+        AfterCommitMetrics.incrementAfterCommit(deleted);
+        transactionManager.commit(tx);
+        assertThat(deleted.count()).isEqualTo(before + 1);
+    }
+
+    @Test
+    void afterCommitSynchronizationSkipsIncrementOnRollback() {
+        // The increment is registered, then the transaction is rolled back: the counter
+        // must not move even though the increment was requested inside the transaction.
+        Counter deleted = meterRegistry.counter("app.activities.lifecycle", "action", "deleted");
+        double before = deleted.count();
+        TransactionStatus tx = transactionManager.getTransaction(new DefaultTransactionDefinition());
+        AfterCommitMetrics.incrementAfterCommit(deleted);
+        transactionManager.rollback(tx);
+        assertThat(deleted.count()).isEqualTo(before);
+    }
+
+    @Test
     void infoEndpointContainsGitBuildAndJava() throws Exception {
         mockMvc.perform(get("/actuator/info"))
                 .andExpect(status().isOk())
@@ -283,7 +315,10 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
                 .andExpect(jsonPath("$.status").value("UP"));
         mockMvc.perform(get("/actuator/health/readiness"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("UP"));
+                .andExpect(jsonPath("$.status").value("UP"))
+                // The readiness group explicitly includes the db indicator: an instance
+                // whose database is down must not receive traffic (see ReadinessIntegrationTest).
+                .andExpect(jsonPath("$.components.db.status").value("UP"));
     }
 
     @Test
@@ -297,25 +332,27 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
                 .andExpect(status().isNotFound());
 
         ILoggingEvent event = requestLogEvents().stream()
-                .filter(e -> String.valueOf(keyValues(e).get("path")).startsWith("/api/v1/activities/"))
+                .filter(e -> String.valueOf(keyValues(e).get("url.path")).startsWith("/api/v1/activities/"))
                 .findFirst().orElseThrow();
         Map<String, Object> kv = keyValues(event);
-        assertThat(kv.get("method")).isEqualTo("GET");
-        assertThat((String) kv.get("path")).startsWith("/api/v1/activities/");
-        assertThat(kv.get("status")).isEqualTo(404);
+        assertThat(kv.get("http.request.method")).isEqualTo("GET");
+        assertThat((String) kv.get("url.path")).startsWith("/api/v1/activities/");
+        assertThat(kv.get("http.response.status_code")).isEqualTo(404);
         assertThat(kv.get("duration_ms")).isInstanceOf(Number.class);
-        assertThat(kv.get("user_id")).isEqualTo(userId);
+        assertThat(kv.get("user.id")).isEqualTo(userId);
+        assertThat(kv.get("event.outcome")).isEqualTo("failure");
         assertThat(event.getMDCPropertyMap().get("traceId")).isNotBlank();
     }
 
     @Test
     void requestLogCoversRejectedRequests() throws Exception {
-        // Unauthenticated -> 401, no user_id.
+        // Unauthenticated -> 401, no user.id.
         mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID()))
                 .andExpect(status().isUnauthorized());
         assertThat(requestLogEvents()).anySatisfy(event -> {
-            assertThat(keyValues(event).get("status")).isEqualTo(401);
-            assertThat(keyValues(event).get("user_id")).isNull();
+            assertThat(keyValues(event).get("http.response.status_code")).isEqualTo(401);
+            assertThat(keyValues(event).get("user.id")).isNull();
+            assertThat(keyValues(event).get("event.outcome")).isEqualTo("failure");
         });
 
         // Authenticated but forbidden -> 403.
@@ -323,15 +360,17 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
                         .with(jwt().jwt(j -> j.subject("user-x").claim("role", "USER"))
                                 .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
                 .andExpect(status().isForbidden());
-        assertThat(requestLogEvents()).anySatisfy(event ->
-                assertThat(keyValues(event).get("status")).isEqualTo(403));
+        assertThat(requestLogEvents()).anySatisfy(event -> {
+            assertThat(keyValues(event).get("http.response.status_code")).isEqualTo(403);
+            assertThat(keyValues(event).get("event.outcome")).isEqualTo("failure");
+        });
 
         // Invalid bearer token -> 401.
         mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID())
                         .header("Authorization", "Bearer not-a-valid-token"))
                 .andExpect(status().isUnauthorized());
         assertThat(requestLogEvents().stream()
-                .filter(event -> Integer.valueOf(401).equals(keyValues(event).get("status")))
+                .filter(event -> Integer.valueOf(401).equals(keyValues(event).get("http.response.status_code")))
                 .count()).isGreaterThanOrEqualTo(2);
     }
 
@@ -345,14 +384,14 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
                 .andExpect(status().isNotFound());
 
         ILoggingEvent event = requestLogEvents().stream()
-                .filter(e -> String.valueOf(keyValues(e).get("path")).startsWith("/api/v1/activities/"))
+                .filter(e -> String.valueOf(keyValues(e).get("url.path")).startsWith("/api/v1/activities/"))
                 .findFirst().orElseThrow();
-        assertThat((String) keyValues(event).get("path")).isEqualTo("/api/v1/activities/" + id);
-        assertThat((String) keyValues(event).get("path")).doesNotContain("secret=value");
+        assertThat((String) keyValues(event).get("url.path")).isEqualTo("/api/v1/activities/" + id);
+        assertThat((String) keyValues(event).get("url.path")).doesNotContain("secret=value");
 
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk());
         assertThat(requestLogEvents()).noneMatch(e ->
-                String.valueOf(keyValues(e).get("path")).startsWith("/actuator/health"));
+                String.valueOf(keyValues(e).get("url.path")).startsWith("/actuator/health"));
     }
 }

@@ -11,7 +11,7 @@ app:
 
   bootstrap:
     # Optional: provision the first ADMIN user on a fresh deployment.
-    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin}
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin@example.com}
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:admin}
 
 spring:

@@ -17,7 +17,7 @@ processors:
   batch:
 
 exporters:
-  otlp/jaeger:
+  otlp_grpc/jaeger:
     endpoint: jaeger:4317
     tls:
       insecure: true
@@ -35,8 +35,19 @@ service:
       # DEBUG makes per-batch receive/export lines visible in `docker compose logs
       # otel-collector` (per-batch logging is DEBUG-only).
       level: debug
+    metrics:
+      # Collector self-metrics (e.g. otelcol_exporter_send_failed_spans, queue size),
+      # scraped by Prometheus on the compose network (otel-collector:8888, NOT
+      # published to the host). This is what alerts on exporter failures/dropped spans
+      # are built on - the :13133 health endpoint only proves the process is running.
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/jaeger]
+      exporters: [otlp_grpc/jaeger]

@@ -34,18 +34,20 @@ services:
         condition: service_healthy
 
   jaeger:
-    image: jaegertracing/all-in-one:1.66.0
+    # Jaeger v2 (the v1 all-in-one image is end-of-life since 2025-12-31). The
+    # all-in-one role needs no config file: transient in-memory storage, OTLP gRPC
+    # ingest on :4317 (collector target), UI on :16686.
+    image: jaegertracing/jaeger:2.20.0
     profiles: ["observability"]
     ports:
       - "127.0.0.1:16686:16686" # Jaeger UI (loopback only)
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
     healthcheck:
-      # Internal admin/health port (not published); same pattern as postgres.
-      test: ["CMD", "wget", "--spider", "-q", "localhost:14269"]
+      # healthcheckv2 /status on the internal admin port (not published); 200 = healthy.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/status"]
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.159.0
@@ -58,6 +60,10 @@ services:
     depends_on:
       jaeger:
         condition: service_healthy
+    # No in-container healthcheck possible: the image ships no shell/wget (distroless).
+    # A dead collector is caught by the otel-collector target-down Grafana alert and
+    # the observability smoke test; restart: unless-stopped recovers it automatically.
+    restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:v2.55.0
@@ -70,6 +76,7 @@ services:
       - ./.observability/scraper-token:/etc/prometheus/scraper-token:ro
     extra_hosts:
       - "host.docker.internal:host-gateway" # Linux; no-op on Docker Desktop
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:11.4.0
@@ -81,6 +88,7 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
 
 volumes:
   postgres-data:

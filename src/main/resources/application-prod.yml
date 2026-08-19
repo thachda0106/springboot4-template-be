@@ -17,6 +17,10 @@ app:
       audience: ${JWT_AUDIENCE:modular-monolith}
       access-token-ttl: ${JWT_ACCESS_TTL:15m}
       refresh-token-ttl: ${JWT_REFRESH_TTL:7d}
+      # The Prometheus scraper token is minted offline with this same private key
+      # (scripts/mint-rsa-jwt.py --role NONE --scope prometheus). The private key
+      # never reaches Prometheus - only the minted bearer token is deployed as a
+      # secret (see docs/observability.md "Prometheus access").
 
   bootstrap:
     # Optional: provision the first ADMIN user on a fresh deployment.
@@ -48,8 +52,13 @@ management:
     tracing:
       export:
         otlp:
-          # REQUIRED in production - never fall back to a localhost collector.
-          # Use HTTPS and, if the collector requires auth, set the headers map from
-          # environment variables (e.g. OTLP_HEADERS). If unset, spans are created but
-          # not exported (fail-open) - see docs/observability.md.
+          # REQUIRED in production - fail-fast: startup refuses to continue unless
+          # OTLP_ENDPOINT is set (or the standard OTEL_EXPORTER_OTLP_ENDPOINT
+          # environment variable, which Spring Boot maps to this property and which
+          # takes precedence). Telemetry must be deliberately configured - never
+          # silently dropped (see docs/observability.md "Tracing").
+          # Collector auth: set OTEL_EXPORTER_OTLP_HEADERS (or the signal-specific
+          # OTEL_EXPORTER_OTLP_TRACES_HEADERS) in OTel format, e.g.
+          #   OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20<token>"
+          # Spring Boot 4.1 maps it to this exporter's headers at startup. Use HTTPS.
           endpoint: ${OTLP_ENDPOINT}

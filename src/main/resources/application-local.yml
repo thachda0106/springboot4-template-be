@@ -26,10 +26,11 @@ app:
 
   bootstrap:
     # Optional: provision the first ADMIN user on a fresh deployment.
-    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin}
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin@example.com}
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:admin}
 
 logging:
+  # Console pattern comes from the base application.yml (standard pattern).
   level:
     com.example.app: DEBUG
     # DB query logging — local DEBUG mode only (never enabled in test/prod):

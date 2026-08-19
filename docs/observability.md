@@ -8,7 +8,7 @@ build metadata. Everything here is implemented in the `observability` feature..
 | Concern | Technology |
 |---|---|
 | Metrics | Spring Boot Actuator + Micrometer, Prometheus registry (`/actuator/prometheus`) |
-| Tracing | Micrometer Tracing + OpenTelemetry bridge, OTLP exporter |
+| Tracing | Micrometer Tracing + OpenTelemetry bridge, OTLP exporter, JDBC query spans (datasource-micrometer) |
 | Logging | Logback; **ECS JSON** in `prod` and `test`, human-readable in `local` |
 | Request logging | `security/web/RequestLoggingFilter` (one structured line per request) |
 | Build metadata | `/actuator/info` — git commit, build time, Java version |
@@ -42,8 +42,9 @@ Notes:
 ### Connection pool metrics (HikariCP)
 
 Registered **automatically** by Spring Boot (`DataSourcePoolMetricsAutoConfiguration`) — no
-custom meters. All names carry a `pool` tag whose value (`HikariPool-N`) is **per-JVM and
-changes on restart** — always aggregate with `sum(...)`, never pin a pool name.
+custom meters. The `pool` tag value is the stable `pool-name` from `application.yml`
+(`modular-monolith-pool`), so the tag can be pinned in queries; `sum(...)` still guards
+against deployments that rename the pool.
 
 | Meter | Meaning |
 |---|---|
@@ -57,7 +58,7 @@ changes on restart** — always aggregate with `sum(...)`, never pin a pool name
 | `hikaricp_connections_usage_seconds_*` | time a connection is checked out (timer) |
 | `hikaricp_connections_creation_seconds_*` | time to create a connection (timer) |
 
-Useful PromQL (restart-safe, no pool-name pinning):
+Useful PromQL (pool name is stable, `sum()` is kept for multi-instance safety):
 
 ```
 sum(hikaricp_connections_active)
@@ -80,20 +81,62 @@ increase(hikaricp_connections_timeout_total[5m])
     (app → collector → jaeger). With the profile **down** (and always in `test`, which never
     runs a collector) there is no collector → export warnings, but spans still populate the
     MDC so log correlation works.
-  - `prod`: **`OTLP_ENDPOINT` is required** (no localhost default). Use HTTPS and, if the
-    collector requires auth, set the `headers` map from environment variables. If unset,
-    spans are created but **not exported** (fail-open) — telemetry is silently dropped.
+  - `prod` is **fail-fast by design**: `application-prod.yml` requires `OTLP_ENDPOINT`
+    (`endpoint: ${OTLP_ENDPOINT}`, no default), so startup **refuses to continue** when the
+    variable is missing — telemetry must be deliberately configured, never silently dropped.
+    Use HTTPS. Two supported ways to configure the endpoint:
+    - `OTLP_ENDPOINT` (the fail-fast placeholder above), or
+    - the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (or signal-specific
+      `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) environment variable — Spring Boot 4.1 maps it
+      to the same property at startup and it takes precedence.
+  - Collector auth: set `OTEL_EXPORTER_OTLP_HEADERS` (or the signal-specific
+    `OTEL_EXPORTER_OTLP_TRACES_HEADERS`) in the standard OTel format, e.g.
+    `OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20<token>"`. Spring Boot 4.1 maps it
+    to `management.opentelemetry.tracing.export.otlp.headers` (W3C header format). There is
+    **no custom `OTLP_HEADERS` variable** — do not use it. The mapping is covered by
+    `ProdTelemetryConfigTest` and the missing-endpoint fail-fast by
+    `ProdTelemetryConfigTest.prodProfileFailsFastWithoutOtlpEndpoint`.
   - Exporter timeout/retry/queue behavior: OpenTelemetry SDK defaults.
 - Trace IDs appear in logs automatically: `trace.id`/`span.id` in ECS JSON (prod/test), and
-  `[traceId-spanId]` in the human-readable local pattern (Boot's default console pattern
-  includes `[%X{traceId:-}-%X{spanId:-}]` when tracing is on the classpath; no custom
-  `LOG_CORRELATION_PATTERN` is set).
+  `[traceId,spanId]` in the human-readable console pattern — the **standard pattern defined
+  in `application.yml`** (`[%X{traceId:-},%X{spanId:-}]`); test/prod override it entirely with
+  ECS structured logging.
+
+### SQL spans
+
+Every query executed through the `DataSource` is automatically traced as a span nested
+inside the request span (and its database session/transaction). Implemented with
+`datasource-micrometer` (by the Micrometer maintainers): the Spring Boot module proxies the
+`DataSource`, and the OpenTelemetry module maps query observations to OTel database
+semantic conventions (v1.39+):
+
+| Span attribute | Example | Notes |
+|---|---|---|
+| span name | `SELECT activities` | operation + collection, normalized by the SQL analyzer |
+| `db.system.name` | `postgresql` | |
+| `db.operation.name` | `SELECT` | parsed from the statement (JSqlParser) |
+| `db.collection.name` | `activities` | normalized query form |
+| `db.query.text` | `select a1_0.id,… from activities a1_0 where a1_0.id = $1` | **sanitized** — literals scrubbed, bind values never included (`jdbc.datasource-proxy.include-parameter-values` stays false; SQL predicates carry user data) |
+
+Config (`application.yml`): `jdbc.includes: QUERY` (OTel covers query execution only —
+CONNECTION/FETCH/KEYS interactions are skipped), `jdbc.opentelemetry.spans.enabled: true`,
+`jdbc.opentelemetry.metrics.enabled: false` (DB metrics already come from the HikariCP
+meters), sanitization on. Proven end-to-end by `SqlSpanIntegrationTest` (captures the
+exported spans in-process and asserts the attributes).
+
+Notes:
+
+- Flyway migration queries and `/actuator/health` DB checks run through the same proxied
+  datasource, so startup and probes produce their own root spans — small volume, excluded
+  from request logs, sampled like everything else.
+- The span is a sibling under the request trace via the security observation spans
+  (`security filterchain …`); the trace id is what correlates it to the request.
 
 ## Logging
 
 | Profile | Format | Trace correlation |
 |---|---|---|
-| `local` | human-readable (Boot default pattern) | `[traceId-spanId]` |
+| `local` | human-readable (standard pattern, `application.yml`) | `[traceId,spanId]` |
 | `test` | ECS JSON (`logging.structured.format.console: ecs`) | `trace.id` field |
 | `prod` | ECS JSON | `trace.id` field |
 
@@ -105,28 +148,41 @@ remove the two `logging.level` lines from `application-local.yml`.
 
 ## Request logging
 
-`security/web/RequestLoggingFilter` logs **one structured line per request**:
+`security/web/RequestLoggingFilter` logs **one structured line per request** with the
+standard access-log fields (ECS-aligned names, directly consumable by log pipelines):
 
-```
-method, path, status, duration_ms, user_id   (+ trace.id / span.id from the MDC)
-```
+| Field | Value |
+|---|---|
+| `http.request.method` | request method (`GET`, `POST`, …) |
+| `url.path` | raw request URI **without the query string** |
+| `http.response.status_code` | final status (401/403 included) |
+| `duration_ms` | processing time in milliseconds |
+| `user.id` | authenticated subject (`Authentication.getName()`); null for anonymous |
+| `event.outcome` | `success` (status < 400, no exception) or `failure` (status ≥ 400 or an unhandled exception propagated through the filter) |
+| `error.type` | simple exception class name when an unhandled exception propagated (e.g. a 500); absent otherwise |
+
+Trace correlation comes from the MDC (`trace.id`/`span.id` in ECS JSON, `[traceId,spanId]`
+locally). The message is a constant (`request completed`) — all signal is in the fields.
 
 - Registered **inside the security filter chain, right after `SecurityContextHolderFilter`**:
   the inner chain (JWT auth, authorization, exception translation) has committed the final
   status (401/403 included) by the time the line is logged, while the `SecurityContext` is
-  still populated — so `user_id` resolves correctly. (Registered *before*
-  `SecurityContextHolderFilter`, its `finally` would clear the context first and `user_id`
+  still populated — so `user.id` resolves correctly. (Registered *before*
+  `SecurityContextHolderFilter`, its `finally` would clear the context first and `user.id`
   would always be null.) Logging happens in `finally`, so a line is emitted even when the
-  chain throws.
-- `path` is the raw request URI **without the query string**.
-- `user_id` is the authenticated subject (`Authentication.getName()`); absent for anonymous
-  requests.
+  chain throws — the exception is captured for `error.type`/`event.outcome` and always
+  rethrown.
+- `url.path` is the raw request URI **without the query string**.
+- `user.id` is the authenticated subject; null for anonymous requests.
 - **No headers, cookies, or request/response bodies are ever logged** (login requests carry
-  passwords).
+  passwords). Exception details are limited to the type name — messages and stack traces are
+  not logged here.
 - `/actuator/health` (liveness/readiness probes) is excluded to avoid probe noise.
 - One line per request is an accepted cost for this application; probes are excluded and the
   production log pipeline/retention is an operations concern. A sampling/level policy for
   high-volume endpoints is a documented future option, not implemented.
+- The field contract is pinned by `RequestLoggingFilterTest` (unit) and the request-log
+  assertions in `ObservabilityIntegrationTest`.
 
 ## Prometheus access
 
@@ -135,7 +191,20 @@ method, path, status, duration_ms, user_id   (+ trace.id / span.id from the MDC)
 - Anonymous → 401; any application user (no scope) → 403; scraper token → 200.
 - App-issued tokens carry no `scope` claim, so only a **dedicated scraper token** works:
   - local: `python scripts/mint-local-jwt.py --sub <scraper-id> --scope prometheus`
-  - prod: minted by the external IdP / service account.
+    (HS256, shared local secret).
+  - prod: **minted offline by an operator holding the application's RSA private key**
+    (`app.security.jwt.private-key`), the same key the app signs access tokens with:
+    ```
+    python scripts/mint-rsa-jwt.py --sub scraper-1 --scope prometheus --role NONE \
+        --key-file <private-key.pem> --verify-with <public-key.pem> --exp-hours 720
+    ```
+    The token is a normal app-compatible RS256 JWT (same issuer/audience), carrying only
+    `scope=prometheus` and **no role claim** → exactly `SCOPE_prometheus`. The private key
+    **must never be given to Prometheus or stored in the scrape config** — only the minted
+    bearer token is deployed as a secret. Re-run the command and redeploy before expiry to
+    rotate (the script prints the token; `--verify-with` proves it signs correctly).
+  - An OIDC/IdP service-account token is *not* supported: the production decoder
+    (`RsaJwtDecoderConfig`) validates signatures against the application's own public key.
 - Rationale: metrics leak internals (user ids, endpoint names); scraping without auth should
   be protected by network policy in addition to the token.
 
@@ -159,10 +228,12 @@ mvnw.cmd compile spring-boot:run -Dspring-boot.run.profiles=local
 
 Then:
 
-- `GET /actuator/health` → UP (public)
+- `GET /actuator/health` → UP (public); `/actuator/health/readiness` aggregates
+  `readinessState` + `db` (components shown) and returns 503 when the database is down —
+  proven by `ReadinessIntegrationTest`
 - `GET /actuator/info` → git/build/java (public)
 - `GET /actuator/prometheus` → 401 anonymous / 403 user / 200 with a scraper token
-- Every request produces one log line with `[traceId-spanId]`
+- Every request produces one log line with `[traceId,spanId]`
 
 ### Local observability UI (Jaeger + Collector + Prometheus + Grafana)
 
@@ -185,17 +256,20 @@ The helper:
   `JWT_LOCAL_SECRET` through, so a custom local secret still yields a valid token.
 - starts `docker compose --profile observability up -d prometheus jaeger grafana
   otel-collector` and waits for each to be reachable on its loopback port. It never prints
-  the token.
+  the token. The waits are a **one-time startup check only** — run
+  `./scripts/observability-smoke-test.sh` afterwards (or periodically) for ongoing
+  verification of the whole path (token scrape, metrics, collector health, no export
+  failures, traces in Jaeger).
 
 Trace path: `app --OTLP HTTP :4318--> otel-collector --OTLP gRPC jaeger:4317--> jaeger`
 (the collector → Jaeger hop is internal to the compose network).
 
 | Service | URL (loopback only) | What to look for |
 |---|---|---|
-| Jaeger | http://localhost:16686 | search `service=modular-monolith` → a trace per API request |
-| Collector | http://localhost:4318 (OTLP ingest), http://localhost:13133 (health) | span flow is proven end-to-end in Jaeger; `docker compose --profile observability logs otel-collector` shows DEBUG memory-limiter/health lines (the collector does not log per-batch lines) |
-| Prometheus | http://localhost:9090 | `up{job="modular-monolith"}` = 1, business counters, request rate |
-| Grafana | http://localhost:3000 | provisioned `modular-monolith` dashboard (counters + request rate) |
+| Jaeger (v2) | http://localhost:16686 | search `service=modular-monolith` → a trace per API request |
+| Collector | http://localhost:4318 (OTLP ingest), http://localhost:13133 (health), `otel-collector:8888` (self-metrics, compose network only) | span flow is proven end-to-end in Jaeger; `docker compose --profile observability logs otel-collector` shows DEBUG memory-limiter/health lines (the collector does not log per-batch lines) |
+| Prometheus | http://localhost:9090 | `up{job="modular-monolith"}` = 1, `up{job="otel-collector"}` = 1, business counters, request rate, collector exporter failures |
+| Grafana | http://localhost:3000 | provisioned `modular-monolith` dashboard (10 panels: counters, request rate, error rates, p95/p99 latency, pool, timeouts, collector exporter health) + alert rules (see below) |
 
 All observability ports bind to `127.0.0.1` only — nothing is exposed on the LAN. Grafana
 runs as an anonymous **viewer** for local convenience; Prometheus scrapes with the bearer token
@@ -214,8 +288,39 @@ Jaeger's indexing delay, so wait ≥15s (one scrape interval) plus a few seconds
 export before looking. To prove the span path, search Jaeger for `service=modular-monolith`:
 since Jaeger no longer publishes `:4318`, a trace there can only have arrived via the
 collector. Collector issues show up as `docker compose --profile observability logs
-otel-collector` startup/error lines or as a failed readiness check on `:13133`; spans are
-dropped fail-open if the collector or Jaeger is down, exactly as when no collector was
-present. `host.docker.internal` requires the `extra_hosts: host-gateway` entry on Linux
-(already in `docker-compose.yml`). Port collisions (4318/13133/16686/9090/3000) with other
-local tools are possible.
+otel-collector` startup/error lines, as a failed readiness check on `:13133`, as a Grafana
+alert on `otelcol_exporter_send_failed_spans`, or via `./scripts/observability-smoke-test.sh`.
+Locally, spans are dropped fail-open if the collector or Jaeger is down, exactly as when no
+collector was present (this is the local dev experience only — **prod is fail-fast**, see
+[Tracing](#tracing)). `host.docker.internal` requires the `extra_hosts: host-gateway` entry
+on Linux (already in `docker-compose.yml`). Port collisions (4318/13133/16686/9090/3000) with
+other local tools are possible.
+
+## Alerting (Grafana)
+
+File-provisioned alert rules live in
+`observability/grafana/provisioning/alerting/alert-rules.yml` (evaluated every minute against
+the provisioned Prometheus datasource; the `modular-monolith` folder is auto-created):
+
+| Rule | PromQL condition | Severity |
+|---|---|---|
+| App scrape target is down | `up{job="modular-monolith"} == 0` (2m) | critical |
+| Collector scrape target is down | `up{job="otel-collector"} == 0` (2m) | critical |
+| Elevated HTTP 5xx rate | 5xx ratio > 5% over 5m (low-traffic floor via `clamp_min`) | warning |
+| p99 request latency above 2s | `histogram_quantile(0.99, ...) > 2` (5m) | warning |
+| HikariCP pool saturation | `sum(hikaricp_connections_pending) > 5` (5m) | warning |
+| HikariCP acquisition timeouts | `sum(increase(hikaricp_connections_timeout_total[5m])) > 0` (5m) | warning |
+| Collector exporter failures | `sum(otelcol_exporter_queue_size) > 0` (5m) | warning |
+
+**Collector failure visibility:** the `:13133` health endpoint proves only that the process is
+running — it does **not** detect a dead Jaeger exporter (pipeline health checking is not
+available in the stock collector image: `check_collector_pipeline` is deprecated/broken and
+`healthcheckv2` is not shipped in the distribution). Exporter failures are visible through the
+collector's **self-metrics** on `otel-collector:8888` (compose network only, scraped by the
+`otel-collector` Prometheus job): when the destination is unreachable, batches back up in
+`otelcol_exporter_queue_size` and `otelcol_exporter_in_flight_requests` climbs while
+`otelcol_exporter_sent_spans` stops growing (verified live against the stack with Jaeger
+stopped). The `otelcol_exporter_send_failed_spans` counter is registered only at the detailed
+telemetry level in collector 0.159.0, so the queue is the primary signal. The collector image
+has no shell/wget, so it gets no in-container healthcheck — a dead collector is caught by the
+target-down alert and recovered by `restart: unless-stopped` in `docker-compose.yml`.

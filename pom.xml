@@ -117,6 +117,22 @@
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
+        <!-- JDBC query spans (datasource-micrometer, by the Micrometer maintainers):
+             proxies the DataSource and emits OTel semantic-convention spans for query
+             execution (db.system/db.operation/sanitized db.statement) through the
+             existing ObservationRegistry + tracing bridge. The spring-boot module
+             auto-instruments the DataSource bean; the opentelemetry module maps
+             observations to OTel conventions. See docs/observability.md "SQL spans". -->
+        <dependency>
+            <groupId>net.ttddyy.observation</groupId>
+            <artifactId>datasource-micrometer-spring-boot</artifactId>
+            <version>2.2.1</version>
+        </dependency>
+        <dependency>
+            <groupId>net.ttddyy.observation</groupId>
+            <artifactId>datasource-micrometer-opentelemetry</artifactId>
+            <version>2.2.1</version>
+        </dependency>
 
         <!-- PostgreSQL driver (runtime only) -->
         <dependency>

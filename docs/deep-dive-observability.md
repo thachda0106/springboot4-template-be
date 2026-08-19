@@ -15,12 +15,12 @@ behind each non-obvious choice.
 | Name | Path | Role |
 |---|---|---|
 | `AfterCommitMetrics` | `shared/AfterCommitMetrics.java` | Deferred counter increment that fires only when the surrounding transaction commits |
-| `RequestLoggingFilter` | `security/web/RequestLoggingFilter.java` | One structured INFO line per HTTP request (method, path, status, duration, user id) |
+| `RequestLoggingFilter` | `security/web/RequestLoggingFilter.java` | One structured INFO line per HTTP request (ECS-aligned fields: method, path, status, duration, user id, outcome, error type) |
 | `SecurityConfig` | `security/config/SecurityConfig.java` | Registers the filter in the chain and authorizes the actuator endpoints |
 | `application.yml` | `src/main/resources/application.yml` | Actuator exposure, health probes, tracing sampling, OTLP endpoint, info contributors |
 | `application-local.yml` | `src/main/resources/application-local.yml` | Human-readable logs, DEBUG SQL + TRACE bind values, `format_sql` |
 | `application-test.yml` | `src/main/resources/application-test.yml` | ECS JSON logs, 100% sampling |
-| `application-prod.yml` | `src/main/resources/application-prod.yml` | ECS JSON logs, 10% sampling, required `OTLP_ENDPOINT` |
+| `application-prod.yml` | `src/main/resources/application-prod.yml` | ECS JSON logs, 10% sampling, fail-fast `OTLP_ENDPOINT` (standard `OTEL_EXPORTER_OTLP_*` env vars for endpoint/headers) |
 | `pom.xml` | `pom.xml` | Observability dependency stack + the surefire metrics-export flag |
 | `CreateActivityUseCase` | `activity/application/usecase/CreateActivityUseCase.java` | Consumer: increments `app.activities.lifecycle{action=created}` after commit |
 | `UpdateActivityUseCase` | `activity/application/usecase/UpdateActivityUseCase.java` | Consumer: increments `{action=updated}` after commit |
@@ -30,8 +30,10 @@ behind each non-obvious choice.
 | `WorkflowEventListener` | `workflow/application/listener/WorkflowEventListener.java` | Modulith listener that calls the service above |
 | `RoleJwtAuthenticationConverter` | `security/jwt/RoleJwtAuthenticationConverter.java` | Maps `scope` → `SCOPE_*` and allow-listed `role` → `ROLE_*` authorities |
 | `JwtTokenService` | `security/jwt/JwtTokenService.java` | App token issuer — tokens carry `role` but never `scope` |
-| `ObservabilityIntegrationTest` | `src/test/.../integration/ObservabilityIntegrationTest.java` | 10 tests proving every behavior cited in this document |
-| `prometheus.yml`, `otelcol-config.yml`, `observability-up.sh`, `mint-local-jwt.py` | `observability/`, `scripts/` | Local UI stack: scrape config, trace pipeline, token minting |
+| `ObservabilityIntegrationTest` | `src/test/.../integration/ObservabilityIntegrationTest.java` | 15 tests proving every behavior cited in this document |
+| `ReadinessIntegrationTest` | `src/test/.../integration/ReadinessIntegrationTest.java` | readiness group tracks `db`: DB outage → 503/DOWN, liveness stays UP |
+| `ProdTelemetryConfigTest` | `src/test/.../integration/ProdTelemetryConfigTest.java` | OTLP Authorization header reaches the exporter config; missing `OTLP_ENDPOINT` fails prod startup |
+| `prometheus.yml`, `otelcol-config.yml`, `observability-up.sh`, `mint-local-jwt.py`, `mint-rsa-jwt.py`, `observability-smoke-test.sh`, `grafana/provisioning/alerting/alert-rules.yml` | `observability/`, `scripts/` | Local UI stack: scrape config (+ collector self-metrics job), trace pipeline, token minting (HS256 local / RS256 prod), smoke test, Grafana alert rules |
 
 ---
 
@@ -136,17 +138,21 @@ export as `app_workflow_entries_total` and could collide with the real counter.
 ### 3.2 The request log line (key-value schema)
 
 ```java
-log.atInfo()                              // RequestLoggingFilter.java:55-61
-        .addKeyValue("method", String)    // HTTP verb, e.g. "POST"
-        .addKeyValue("path", String)      // request.getRequestURI() — NO query string, no headers, no body
-        .addKeyValue("status", Integer)   // final committed status: 200/201/401/403/404/...
-        .addKeyValue("duration_ms", Long) // (end − start) / 1_000_000
-        .addKeyValue("user_id", String)   // authenticated subject, or null for anonymous
+log.atInfo()                              // RequestLoggingFilter.java:66-83
+        .addKeyValue("http.request.method", String)   // HTTP verb, e.g. "POST" (ECS-aligned)
+        .addKeyValue("url.path", String)              // request.getRequestURI() — NO query string, no headers, no body
+        .addKeyValue("http.response.status_code", Integer) // final committed status: 200/201/401/403/404/...
+        .addKeyValue("duration_ms", Long)             // (end − start) / 1_000_000
+        .addKeyValue("user.id", String)               // authenticated subject, or null for anonymous
+        .addKeyValue("event.outcome", String)         // "success" (status < 400) | "failure" (status ≥ 400 or unhandled exception)
+        .addKeyValue("error.type", String)            // simple class name, ONLY when an exception propagated; absent otherwise
         .log("request completed");
 ```
 
 MDC enrichment is automatic: `traceId`/`spanId` (local human pattern) or `trace.id`/
-`span.id` (ECS JSON in test/prod) ride along on the same line.
+`span.id` (ECS JSON in test/prod) ride along on the same line. The field contract is pinned
+by `RequestLoggingFilterTest` (unit) and the request-log assertions in
+`ObservabilityIntegrationTest`.
 
 ### 3.3 Management config tree
 
@@ -191,8 +197,14 @@ Commit path (counter starts at 0):
 Rollback path (counter starts at 0):
   begin tx → SELECT (activity missing) → ActivityNotFoundException → ROLLBACK
   → no afterCommit callback → app.activities.lifecycle{action=deleted} stays 0   ✓
-  (proven by ObservabilityIntegrationTest.rollbackDoesNotIncrementCounter,
-   test file lines 248-263: DELETE of a random UUID → 404 → counter unchanged)
+  (proven by ObservabilityIntegrationTest.rollbackDoesNotIncrementCounter:
+   DELETE of a random UUID → 404 → counter unchanged)
+
+Both after-commit branches are also exercised directly against a real transaction:
+  ObservabilityIntegrationTest.afterCommitSynchronizationIncrementsOnCommit
+  ObservabilityIntegrationTest.afterCommitSynchronizationSkipsIncrementOnRollback
+  (PlatformTransactionManager begin/commit/rollback + AfterCommitMetrics; the
+  immediate-increment branch is covered by the no-transaction unit tests)
 ```
 
 ### 4.2 `RequestLoggingFilter` — position and timing
@@ -276,7 +288,9 @@ input: one HTTP request (sampled)
   → OTLP exporter → endpoint
        local/test: http://localhost:4318/v1/traces  (application.yml:46)
                    collector → OTLP gRPC → jaeger:4317  (otelcol-config.yml:19-23)
-       prod:       ${OTLP_ENDPOINT} — required, fail-open if unset (application-prod.yml:47-55)
+       prod:       ${OTLP_ENDPOINT} — required, FAIL-FAST if unset (application-prod.yml)
+                   (or standard OTEL_EXPORTER_OTLP_ENDPOINT; headers via
+                   OTEL_EXPORTER_OTLP_HEADERS — both mapped by Boot 4.1 at startup)
   sampling: 1.0 (application.yml:37-38, test), 0.1 default prod (application-prod.yml:43-46)
 ```
 
@@ -294,7 +308,7 @@ Profile comparison (logging + tracing):
 
 | Profile | Log format | Sampling | SQL logging |
 |---|---|---|---|
-| `local` | human-readable, `[traceId-spanId]` | 1.0 | DEBUG `org.hibernate.SQL` + TRACE `bind` + `format_sql` (`application-local.yml:32-38`, `8-12`) |
+| `local` | human-readable, `[traceId,spanId]` (standard pattern, `application.yml`) | 1.0 | DEBUG `org.hibernate.SQL` + TRACE `bind` + `format_sql` (`application-local.yml:33-41`, `8-12`) |
 | `test` | ECS JSON | 1.0 | off by default (`application-test.yml:22-30`) |
 | `prod` | ECS JSON | 0.1 (`TRACING_SAMPLING_PROBABILITY`) | never (predicates carry user data) |
 
@@ -337,11 +351,13 @@ Step  User / Client                  Application                                
                                      save(WorkflowEntry.forActivity) ──────────► INSERT workflow_entries
                                      countCreated() → app.workflow.entries 0 → 1
                                      (service lines 36-42, 63-66; no-op on duplicate, line 37-39)
- 9                                  finally block (RequestLoggingFilter.java:48-62):
-                                     durationMs = (53_421_345_678 − 53_408_900_000)/1e6 = 12
-                                     log.atInfo(): method=POST, path=/api/v1/activities,
-                                     status=201, duration_ms=12, user_id=8f1c2e4a-…,
-                                     trace.id=4bf92f3577b34da6a3ce929d0e0e4736
+ 9                                  finally block (RequestLoggingFilter.java:66-83):
+                                      durationMs = (53_421_345_678 − 53_408_900_000)/1e6 = 12
+                                      log.atInfo(): http.request.method=POST,
+                                      url.path=/api/v1/activities,
+                                      http.response.status_code=201, duration_ms=12,
+                                      user.id=8f1c2e4a-…, event.outcome=success,
+                                      trace.id=4bf92f3577b34da6a3ce929d0e0e4736
 10                                  Response: 201 + Location /api/v1/activities/a3b1c9d2-…
 11                                                                                          Prometheus scrape (15 s):
                                                                                             app_activities_lifecycle_total{action="created"} 1
@@ -423,8 +439,9 @@ It is `new`-ed inline in `SecurityConfig` (`SecurityConfig.java:57`), documented
 
 `/actuator/prometheus` requires `SCOPE_prometheus` (`SecurityConfig.java:63`); app-issued
 tokens never carry a scope claim (`JwtTokenService.java:90-97`), so the only valid scraper
-is a dedicated token (`observability-up.sh:17-22` mints one with `--role NONE --scope
-prometheus`).
+is a dedicated token: `observability-up.sh:17-22` mints the local one with `--role NONE
+--scope prometheus`; prod mints one with the app's RSA private key via
+`scripts/mint-rsa-jwt.py` (same claim shape, see `docs/observability.md` "Prometheus access").
 
 - **What breaks without it**: metrics (user ids, endpoint names) leak to any authenticated
   user; the test pins the full matrix 401/403/200 (`ObservabilityIntegrationTest.java:122-165`).
@@ -432,8 +449,9 @@ prometheus`).
 ### 7.5 ECS JSON in test/prod, human-readable in local
 
 `application-test.yml:22-25` and `application-prod.yml:33-36` set
-`logging.structured.format.console: ecs`; local stays Boot's default pattern with
-`[traceId-spanId]`.
+`logging.structured.format.console: ecs`; the human-readable console pattern (with
+`[traceId,spanId]`) is the standard default in `application.yml`, and ECS structured output
+overrides it entirely in test/prod.
 
 - **What breaks without it**: prod logs are hard for a log pipeline to parse; local JSON
   is painful for developers. The split is deliberate per profile.
@@ -452,12 +470,16 @@ leak; only git/build/java are enabled. Test asserts `$.env` does not exist
   (`app.workflow.entries.created` → `app_workflow_entries_total`), breaking dashboards and
   potentially colliding with the real counter at registration time.
 
-### 7.8 Fail-open tracing
+### 7.8 Fail-fast production tracing
 
-Local/test default to `localhost:4318` (`application.yml:46`); prod *requires*
-`OTLP_ENDPOINT` but still fails open (`application-prod.yml:47-55`). Spans are created and
-populate the MDC even with no collector — log correlation works, export warnings don't
-kill requests.
+Local/test default to `localhost:4318` (`application.yml:68`) and fail open by design — no
+collector, export warnings, MDC correlation still works. **Prod is the opposite, by design:
+fail-fast.** `application-prod.yml` requires `OTLP_ENDPOINT` (no default), so startup
+refuses to continue when it is missing (or when the standard
+`OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` environment variables,
+which Spring Boot 4.1 maps to the same property, are absent). Telemetry must be deliberately
+configured in production; silently dropped spans are a monitoring failure, not an acceptable
+mode. Contract proven by `ProdTelemetryConfigTest.prodProfileFailsFastWithoutOtlpEndpoint`.
 
 ### 7.9 The workflow counter is listener-local
 
@@ -473,19 +495,19 @@ This is accepted because in-process events are exactly-once-by-construction toda
 
 | Scenario | How handled | Source |
 |---|---|---|
-| Transaction rolls back after a counter was "incremented" | Increment deferred; `afterCommit()` never fires; count unchanged | `AfterCommitMetrics.java:23-29`; test `:248-263` |
+| Transaction rolls back after a counter was "incremented" | Increment deferred; `afterCommit()` never fires; count unchanged | `AfterCommitMetrics.java:23-29`; `afterCommitSynchronizationSkipsIncrementOnRollback` + API 404 test |
 | No transaction active (unit tests, non-tx paths) | Immediate increment — nothing to roll back | `AfterCommitMetrics.java:30-32` |
-| Chain throws an exception | Logging is in `finally` — the line still appears | `RequestLoggingFilter.java:46-62` |
-| Anonymous request (no/invalid token) | `user_id = null`; status 401 logged | `RequestLoggingFilter.java:50-54`; test `:312-319`, `:329-335` |
-| Health probes (liveness/readiness) | Filter skips `/actuator/health*` entirely | `RequestLoggingFilter.java:37-40`; test `:353-356` |
-| Query string carries secrets (`?secret=value`) | `getRequestURI()` — path only, query never logged | `RequestLoggingFilter.java:57`; test `:338-351` |
-| Scraper token used on business endpoints | Only `SCOPE_prometheus` — role-gated endpoints 403 | `SecurityConfig.java:67-74`; test `:138-165` |
+| Chain throws an exception | Logging is in `finally` — the line still appears, exception captured for `error.type` + `event.outcome=failure`, always rethrown | `RequestLoggingFilter.java:60-83`; test `unhandledExceptionIsCapturedForErrorTypeAndRethrown` |
+| Anonymous request (no/invalid token) | `user.id = null`; status 401 logged, `event.outcome=failure` | `RequestLoggingFilter.java:70-79`; tests `anonymousRequestLogsNullUserId` + `requestLogCoversRejectedRequests` |
+| Health probes (liveness/readiness) | Filter skips `/actuator/health*` entirely | `RequestLoggingFilter.java:37-40`; test `requestLogExcludesQueryStringAndHealthProbes` |
+| Query string carries secrets (`?secret=value`) | `getRequestURI()` — path only, query never logged | `RequestLoggingFilter.java:57`; test `requestLogExcludesQueryStringAndHealthProbes` |
+| Scraper token used on business endpoints | Only `SCOPE_prometheus` — role-gated endpoints 403 | `SecurityConfig.java:67-74`; test `scraperTokenIsLeastPrivilege` |
 | Duplicate event delivery | `findByActivityId(...).isPresent()` → return before save/count | `WorkflowEntryApplicationService.java:37-39` |
 | Update arrives before create (out-of-order) | Reconstruct the entry, count it as created | `WorkflowEntryApplicationService.java:45-55` |
 | Failed login inside a tx that rolls back | Failure counted immediately — the attempt happened | `LoginUseCase.java:62-66` |
 | Password over the BCrypt limit (72 bytes) | `InvalidUserException` — counted as neither success nor failure | `LoginUseCase.java:70`; `docs/observability.md:35-36` |
-| No collector running (local/test) | Export warnings; MDC correlation still works | `application.yml:39-46`; `docs/observability.md:78-82` |
-| Prod without `OTLP_ENDPOINT` | Fail-open: spans created, not exported | `application-prod.yml:47-55` |
+| No collector running (local/test) | Export warnings; MDC correlation still works | `application.yml:64-68`; `docs/observability.md` "Tracing" |
+| Prod without `OTLP_ENDPOINT` | Fail-fast: startup refuses to continue | `application-prod.yml`; `ProdTelemetryConfigTest.prodProfileFailsFastWithoutOtlpEndpoint` |
 | Not a git checkout | `failOnNoGitDirectory=false` — `/actuator/info` simply lacks git data | `pom.xml:228-230` |
 | Boot 4 test infra disables metrics export | Surefire sets `spring.test.metrics.export=true` | `pom.xml:203-211` |
 | Meter name ends in a reserved suffix | Avoided by naming convention; documented in code comment | `WorkflowEntryApplicationService.java:63-65` |
@@ -571,21 +593,28 @@ modular-monolith/
 │       ├── WorkflowEventListener.java         # @ApplicationModuleListener entry points
 │       └── WorkflowEntryApplicationService.java  # app.workflow.entries + idempotency
 ├── src/main/resources/
-│   ├── application.yml                        # management/tracing/info config
+│   ├── application.yml                        # management/tracing/jdbc/info config
 │   ├── application-local.yml                  # human logs, DEBUG SQL, format_sql
 │   ├── application-test.yml                   # ECS JSON, sampling 1.0
-│   └── application-prod.yml                   # ECS JSON, sampling 0.1, OTLP required
+│   └── application-prod.yml                   # ECS JSON, sampling 0.1, fail-fast OTLP
 ├── src/test/java/com/example/app/integration/
-│   └── ObservabilityIntegrationTest.java      # 10 tests: meters, logs, endpoints, authz
+│   ├── ObservabilityIntegrationTest.java      # 15 tests: meters, logs, endpoints, authz, after-commit
+│   ├── ReadinessIntegrationTest.java          # DB outage → readiness 503/DOWN
+│   ├── ProdTelemetryConfigTest.java           # OTLP headers binding + fail-fast startup
+│   └── SqlSpanIntegrationTest.java            # JDBC query spans: db.* attributes, sanitized, nested
+├── src/test/java/com/example/app/security/web/
+│   └── RequestLoggingFilterTest.java          # request log contract: fields, outcome, error capture
 ├── observability/
-│   ├── prometheus.yml                         # scrape job: bearer scraper-token → :8080
-│   ├── otelcol-config.yml                     # OTLP :4318 → batch → jaeger:4317
-│   └── grafana/provisioning/                  # datasource + modular-monolith dashboard
+│   ├── prometheus.yml                         # jobs: app (bearer token) + otel-collector (:8888)
+│   ├── otelcol-config.yml                     # OTLP :4318 → batch → jaeger:4317 + self-metrics :8888
+│   └── grafana/provisioning/                  # datasource + dashboard + alert-rules.yml
 ├── scripts/
 │   ├── mint-local-jwt.py                      # HS256 token mint (--scope prometheus)
-│   └── observability-up.sh                    # mints scraper token, starts UI stack
-├── docker-compose.yml                         # observability profile: jaeger/collector/prometheus/grafana
-├── pom.xml                                    # actuator/micrometer/tracing deps + surefire flag
+│   ├── mint-rsa-jwt.py                        # RS256 token mint with the prod private key
+│   ├── observability-up.sh                    # mints scraper token, starts UI stack
+│   └── observability-smoke-test.sh            # end-to-end verification of the whole path
+├── docker-compose.yml                         # observability profile: jaeger v2/collector/prometheus/grafana (+ healthchecks, restart)
+├── pom.xml                                    # actuator/micrometer/tracing deps (+ datasource-micrometer for JDBC spans) + surefire flag
 └── docs/
     ├── observability.md                       # the WHAT doc (stack, meter catalog, ops)
     └── deep-dive-observability.md             # this document

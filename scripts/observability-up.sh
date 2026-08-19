@@ -43,3 +43,6 @@ echo "  Jaeger      http://localhost:16686"
 echo "  Prometheus  http://localhost:9090"
 echo "  Grafana     http://localhost:3000"
 echo "  Collector   http://localhost:4318 (OTLP ingest), http://localhost:13133 (health)"
+echo
+echo "The waits above are a one-time startup check only. Ongoing verification:"
+echo "  ./scripts/observability-smoke-test.sh"

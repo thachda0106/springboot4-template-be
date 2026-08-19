@@ -16,7 +16,11 @@
       "targets": [
         {
           "expr": "up{job=\"modular-monolith\"}",
-          "legendFormat": "{{job}}"
+          "legendFormat": "app ({{job}})"
+        },
+        {
+          "expr": "up{job=\"otel-collector\"}",
+          "legendFormat": "collector ({{job}})"
         }
       ],
       "fieldConfig": {
@@ -59,7 +63,7 @@
     {
       "title": "Logins",
       "type": "timeseries",
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 6 },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -73,18 +77,42 @@
       }
     },
     {
-      "title": "Workflow entries",
+      "title": "HTTP error rate (4xx / 5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"4..\"}[5m]))",
+          "legendFormat": "4xx/s"
+        },
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Request latency p95/p99",
       "type": "timeseries",
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(app_workflow_entries_total[5m])",
-          "legendFormat": "entries/s"
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "ops" },
+        "defaults": { "unit": "s" },
         "overrides": []
       }
     },
@@ -115,6 +143,58 @@
         "defaults": { "unit": "short" },
         "overrides": []
       }
+    },
+    {
+      "title": "Workflow entries",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(app_workflow_entries_total[5m])",
+          "legendFormat": "entries/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Pool acquisition timeouts",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "increase(hikaricp_connections_timeout_total[5m])",
+          "legendFormat": "timeouts/5m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Collector exporter health",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "otelcol_exporter_queue_size",
+          "legendFormat": "queue size (batches)"
+        },
+        {
+          "expr": "otelcol_exporter_in_flight_requests",
+          "legendFormat": "in-flight (retrying)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      }
     }
   ],
   "refresh": "30s",
@@ -126,5 +206,5 @@
   "timezone": "browser",
   "title": "modular-monolith",
   "uid": "modular-monolith",
-  "version": 1
+  "version": 2
 }

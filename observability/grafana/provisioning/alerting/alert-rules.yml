@@ -1,0 +1,265 @@
+apiVersion: 1
+
+# Grafana file-provisioned alert rules (Grafana 11.x). Evaluated against the
+# provisioned Prometheus datasource (uid "prometheus"); the folder is created
+# automatically by provisioning.
+#
+# Thresholds are deliberate production defaults, not tuned to this demo stack:
+# lower them (or raise severity) per environment as traffic profiles are known.
+groups:
+  - orgId: 1
+    name: modular-monolith
+    folder: modular-monolith
+    interval: 1m
+    rules:
+      - uid: mm-app-target-down
+        title: App scrape target is down
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: up{job="modular-monolith"} == 0
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Prometheus cannot scrape the modular-monolith app
+
+      - uid: mm-collector-target-down
+        title: Collector scrape target is down
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: up{job="otel-collector"} == 0
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The OpenTelemetry Collector is not being scraped - spans are being dropped
+
+      - uid: mm-http-5xx-rate
+        title: Elevated HTTP 5xx rate
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+                / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.0001) > 0.05
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5% of requests returned 5xx over the last 5 minutes
+
+      - uid: mm-latency-p99
+        title: p99 request latency above 2s
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[5m])) by (le)) > 2
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: p99 request latency exceeded 2s for 5 minutes
+
+      - uid: mm-pool-pending
+        title: HikariCP pool saturation (pending waiters)
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: sum(hikaricp_connections_pending) > 5
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5 requests waiting for a DB connection for 5 minutes
+
+      - uid: mm-pool-timeouts
+        title: HikariCP connection acquisition timeouts
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: sum(increase(hikaricp_connections_timeout_total[5m])) > 0
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Requests failed to acquire a DB connection within the pool timeout
+
+      - uid: mm-exporter-failures
+        title: Collector exporter failures (traces not reaching Jaeger)
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              # Batches accumulate in the exporter queue while the destination is
+              # unreachable (observed with otel-collector-contrib 0.159.0; the
+              # otelcol_exporter_send_failed_spans counter is only registered at the
+              # detailed telemetry level, so the queue is the reliable signal).
+              expr: sum(otelcol_exporter_queue_size) > 0
+              instant: true
+              range: false
+              refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              refId: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+                  operator:
+                    type: and
+            relativeTimeRange:
+              from: 300
+              to: 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: The collector exporter queue is backed up for 5 minutes - traces are not reaching Jaeger
