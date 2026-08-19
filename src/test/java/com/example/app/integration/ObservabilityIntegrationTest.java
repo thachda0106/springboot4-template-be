@@ -40,11 +40,17 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
 
     private static final ListAppender<ILoggingEvent> REQUEST_LOG_APPENDER = new ListAppender<>();
 
+    /**
+     * Captures Hibernate SQL statements ({@code org.hibernate.SQL}) and bind parameter
+     * values ({@code org.hibernate.orm.jdbc.bind}) for the DEBUG-logging test.
+     */
+    private static final ListAppender<ILoggingEvent> SQL_LOG_APPENDER = new ListAppender<>();
+
     @Autowired
     private MeterRegistry meterRegistry;
 
     @BeforeEach
-    void attachRequestLogAppender() {
+    void attachLogAppenders() {
         // Attach only after Spring has initialized the logback context: for a
         // @SpringBootTest the context (and Boot's logging initialization, which calls
         // LoggerContext.reset()) is created between @BeforeAll and the test body, so
@@ -56,6 +62,16 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
             REQUEST_LOG_APPENDER.start();
         }
         REQUEST_LOG_APPENDER.list.clear();
+
+        for (String category : new String[] {"org.hibernate.SQL", "org.hibernate.orm.jdbc.bind"}) {
+            ch.qos.logback.classic.Logger sqlLogger =
+                    (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(category);
+            if (!sqlLogger.isAttached(SQL_LOG_APPENDER)) {
+                sqlLogger.addAppender(SQL_LOG_APPENDER);
+                SQL_LOG_APPENDER.start();
+            }
+        }
+        SQL_LOG_APPENDER.list.clear();
     }
 
     private static Map<String, Object> keyValues(ILoggingEvent event) {
@@ -179,6 +195,45 @@ class ObservabilityIntegrationTest extends AbstractApiIntegrationTest {
         String body = scrapePrometheus();
         assertThat(body).contains("app_auth_logins_total{outcome=\"success\"");
         assertThat(body).contains("app_auth_logins_total{outcome=\"failure\"");
+    }
+
+    @Test
+    void hikaricpConnectionPoolMetricsExposedInScrape() throws Exception {
+        // HikariCP metrics are auto-registered by Boot (DataSourcePoolMetricsAutoConfiguration).
+        // Presence-based: gauges exist at 0 once the pool starts; never assert counts.
+        String body = scrapePrometheus();
+        assertThat(body).contains("hikaricp_connections{pool=");
+        assertThat(body).contains("hikaricp_connections_active{pool=");
+    }
+
+    @Test
+    void dbQueriesAreLoggedAtDebugLevel() throws Exception {
+        // The test profile intentionally does not log SQL (INFO default); set the levels
+        // programmatically to prove the behavior the local profile wires in, then restore.
+        ch.qos.logback.classic.Logger sqlLogger =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.hibernate.SQL");
+        ch.qos.logback.classic.Logger bindLogger =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.hibernate.orm.jdbc.bind");
+        ch.qos.logback.classic.Level originalSql = sqlLogger.getLevel();
+        ch.qos.logback.classic.Level originalBind = bindLogger.getLevel();
+        try {
+            sqlLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+            bindLogger.setLevel(ch.qos.logback.classic.Level.TRACE);
+
+            // 404 read path runs a SELECT against the activities table.
+            mockMvc.perform(get("/api/v1/activities/{id}", UUID.randomUUID())
+                            .with(jwt().jwt(j -> j.subject("user-x").claim("role", "USER"))
+                                    .authorities(new SimpleGrantedAuthority("ROLE_USER"))))
+                    .andExpect(status().isNotFound());
+
+            assertThat(SQL_LOG_APPENDER.list).anyMatch(event ->
+                    event.getFormattedMessage().toLowerCase().startsWith("select"));
+            assertThat(SQL_LOG_APPENDER.list).anyMatch(event ->
+                    "org.hibernate.orm.jdbc.bind".equals(event.getLoggerName()));
+        } finally {
+            sqlLogger.setLevel(originalSql);   // null restores inherited level
+            bindLogger.setLevel(originalBind);
+        }
     }
 
     @Test

@@ -87,6 +87,34 @@
         "defaults": { "unit": "ops" },
         "overrides": []
       }
+    },
+    {
+      "title": "DB connection pool",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(hikaricp_connections_max)",
+          "legendFormat": "max"
+        },
+        {
+          "expr": "sum(hikaricp_connections_active)",
+          "legendFormat": "active"
+        },
+        {
+          "expr": "sum(hikaricp_connections_idle)",
+          "legendFormat": "idle"
+        },
+        {
+          "expr": "sum(hikaricp_connections_pending)",
+          "legendFormat": "pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      }
     }
   ],
   "refresh": "30s",

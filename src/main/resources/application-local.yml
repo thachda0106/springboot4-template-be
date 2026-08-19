@@ -5,6 +5,12 @@ spring:
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:123456}
 
+  jpa:
+    properties:
+      hibernate:
+        # Pretty-print SQL in local logs (no-op unless org.hibernate.SQL is at DEBUG).
+        format_sql: true
+
 
 app:
   security:
@@ -26,3 +32,7 @@ app:
 logging:
   level:
     com.example.app: DEBUG
+    # DB query logging — local DEBUG mode only (never enabled in test/prod):
+    # statements at DEBUG, bind parameter values at TRACE (see docs/observability.md).
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE

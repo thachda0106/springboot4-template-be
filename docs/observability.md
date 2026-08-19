@@ -39,6 +39,34 @@ Notes:
   execution loses both the workflow row and the counter — inherent to in-process events
   (see `event-driven.md`).
 
+### Connection pool metrics (HikariCP)
+
+Registered **automatically** by Spring Boot (`DataSourcePoolMetricsAutoConfiguration`) — no
+custom meters. All names carry a `pool` tag whose value (`HikariPool-N`) is **per-JVM and
+changes on restart** — always aggregate with `sum(...)`, never pin a pool name.
+
+| Meter | Meaning |
+|---|---|
+| `hikaricp_connections` | current pool size (total connections) |
+| `hikaricp_connections_active` | connections checked out by in-flight requests |
+| `hikaricp_connections_idle` | connections sitting idle in the pool |
+| `hikaricp_connections_pending` | threads waiting for a connection |
+| `hikaricp_connections_max` / `_min` | configured pool bounds |
+| `hikaricp_connections_timeout_total` | connection acquisition timeouts |
+| `hikaricp_connections_acquire_seconds_*` | time to acquire a connection (timer) |
+| `hikaricp_connections_usage_seconds_*` | time a connection is checked out (timer) |
+| `hikaricp_connections_creation_seconds_*` | time to create a connection (timer) |
+
+Useful PromQL (restart-safe, no pool-name pinning):
+
+```
+sum(hikaricp_connections_active)
+sum(hikaricp_connections_idle)
+sum(hikaricp_connections_pending)
+sum(hikaricp_connections_max)
+increase(hikaricp_connections_timeout_total[5m])
+```
+
 ## Tracing
 
 - **Propagation**: W3C trace context (Boot default).
@@ -68,6 +96,12 @@ Notes:
 | `local` | human-readable (Boot default pattern) | `[traceId-spanId]` |
 | `test` | ECS JSON (`logging.structured.format.console: ecs`) | `trace.id` field |
 | `prod` | ECS JSON | `trace.id` field |
+
+**DB query logging** — only the `local` profile logs SQL: statements at `DEBUG`
+(`org.hibernate.SQL`), bind parameter values at `TRACE` (`org.hibernate.orm.jdbc.bind`),
+pretty-printed (`hibernate.format_sql`). This is dev tooling: SQL predicates can carry user
+data, so it is **never enabled in `test` or `prod`** (prod logs ECS JSON). To disable,
+remove the two `logging.level` lines from `application-local.yml`.
 
 ## Request logging
 
