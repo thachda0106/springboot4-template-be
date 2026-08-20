@@ -24,6 +24,7 @@ synchronization (`shared/AfterCommitMetrics`), so a rolled-back transaction does
 | `app.activities.lifecycle` | `action=created\|updated\|deleted` | committed aggregate change | `Create/Update/DeleteActivityUseCase` |
 | `app.auth.logins` | `outcome=success\|failure` | success = committed login (tokens persisted); failure = failed attempt (counted immediately) | `LoginUseCase` |
 | `app.workflow.entries` | — | workflow row actually persisted (both the create path and the out-of-order reconstruction); duplicates/no-ops not counted | `WorkflowEntryApplicationService` |
+| `app.security.limiter.failopen` | `layer=throttle\|rate-limit` | **fail-open events** — every request allowed because Redis was unavailable (connection failure or command timeout). Alert on this: while it counts, the rate limit is silently off | `RedisFixedWindowRateLimiter` |
 
 Notes:
 
@@ -66,6 +67,27 @@ sum(hikaricp_connections_idle)
 sum(hikaricp_connections_pending)
 sum(hikaricp_connections_max)
 increase(hikaricp_connections_timeout_total[5m])
+```
+
+### Redis (limiter + cache)
+
+Registered **automatically** by Spring Boot: the Lettuce client, the cache and the health
+indicator need no custom meters. The fail-open counter above is the only custom meter.
+
+| Meter / signal | Meaning |
+|---|---|
+| `app.security.limiter.failopen` (`layer=...`) | fail-open events — the rate limit is off while this increases |
+| `cache_gets_total` / `cache_puts_total` | Spring Cache metrics with `cache=<name>` (activities / workflow-entries / user-summaries) and `result=hit\|miss\|put\|error` tags — watch the hit ratio per cache |
+| `redis_*` (Micrometer Lettuce observation, if enabled) | connection-level Redis metrics |
+| Actuator health `redis` indicator | Redis up/down (part of the health endpoint; the readiness group intentionally stays `readinessState,db` — fail-open means the app serves without Redis) |
+| Request log `url.path` / `status_code` | 429 counts per endpoint (`THROTTLED` / `RATE_LIMITED`) |
+
+Useful PromQL:
+
+```
+sum(increase(app_security_limiter_failopen_total[5m]))              # fail-open events in 5m — alert threshold > 0
+sum(rate(cache_gets_total{result="hit"}[5m])) / clamp_min(sum(rate(cache_gets_total[5m])), 0.0001)  # cache hit ratio
+increase(cache_gets_total{result="error"}[5m])                      # cache errors (should stay 0 - fail-open swallows them)
 ```
 
 ## Tracing
@@ -310,6 +332,8 @@ the provisioned Prometheus datasource; the `modular-monolith` folder is auto-cre
 | p99 request latency above 2s | `histogram_quantile(0.99, ...) > 2` (5m) | warning |
 | HikariCP pool saturation | `sum(hikaricp_connections_pending) > 5` (5m) | warning |
 | HikariCP acquisition timeouts | `sum(increase(hikaricp_connections_timeout_total[5m])) > 0` (5m) | warning |
+| Redis limiter fail-open active | `sum(increase(app_security_limiter_failopen_total[5m])) > 0` (5m) | warning |
+| Cache hit ratio collapsed | hit ratio < 20% over 5m (or `cache_gets_total{result="error"}` > 0) | warning |
 | Collector exporter failures | `sum(otelcol_exporter_queue_size) > 0` (5m) | warning |
 
 **Collector failure visibility:** the `:13133` health endpoint proves only that the process is

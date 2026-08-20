@@ -31,8 +31,16 @@ public abstract class AbstractIntegrationTest {
             .withExposedPorts(5432)
             .waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*", 2));
 
+    // Redis for the distributed rate limiter + read cache. Testcontainers 2.x has no
+    // per-database module for Redis either - same GenericContainer pattern as PostgreSQL.
+    private static final GenericContainer<?> REDIS = new GenericContainer<>(
+            DockerImageName.parse("redis:7-alpine"))
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*", 1));
+
     static {
         POSTGRES.start();
+        REDIS.start();
     }
 
     @DynamicPropertySource
@@ -41,5 +49,7 @@ public abstract class AbstractIntegrationTest {
                 "jdbc:postgresql://%s:%d/modular_monolith".formatted(POSTGRES.getHost(), POSTGRES.getMappedPort(5432)));
         registry.add("spring.datasource.username", () -> "postgres");
         registry.add("spring.datasource.password", () -> "postgres");
+        registry.add("spring.data.redis.host", () -> REDIS.getHost());
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
     }
 }

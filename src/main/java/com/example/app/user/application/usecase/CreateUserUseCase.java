@@ -6,6 +6,7 @@ import com.example.app.user.domain.exception.DuplicateUserException;
 import com.example.app.user.domain.model.User;
 import com.example.app.user.domain.model.UserRole;
 import com.example.app.user.domain.repository.UserRepository;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,12 @@ public class CreateUserUseCase {
     }
 
     @Transactional
+    // Evict-after-invoke (default) is deliberate: eviction runs before commit; a concurrent
+    // reader may re-cache the pre-commit value for <=60s (TTL backstop). Do NOT switch to
+    // beforeInvocation=true - on rollback the cache would be cold for a value that still exists.
+    // (For a brand-new user the key never existed - the eviction is a harmless no-op that
+    // keeps the "all writes evict" invariant.)
+    @CacheEvict(cacheNames = "user-summaries", key = "#result.id")
     public User execute(String name, String email, String rawPassword, UserRole role) {
         PasswordRules.requireWithinBcryptLimit(rawPassword);
         String normalizedEmail = email.trim().toLowerCase();

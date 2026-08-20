@@ -5,6 +5,16 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 
+  data:
+    redis:
+      # Redis must be on a protected network segment (never exposed to the public
+      # internet); TLS is available via REDIS_SSL_ENABLED (see docs/security.md §8).
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+
 app:
   security:
     jwt:
@@ -21,6 +31,14 @@ app:
       # (scripts/mint-rsa-jwt.py --role NONE --scope prometheus). The private key
       # never reaches Prometheus - only the minted bearer token is deployed as a
       # secret (see docs/observability.md "Prometheus access").
+
+    # Redis-backed limiting fails OPEN by default (availability > strict limiting):
+    # a Redis outage logs + counts (app.security.limiter.failopen meter) and allows
+    # requests. Set LIMITER_REDIS_FAIL_OPEN=false to fail closed (500) instead.
+    # Alert on the failopen meter - a silent rate-limit loss is the trade-off of
+    # fail-open (see docs/security.md §8).
+    limiter:
+      redis-fail-open: ${LIMITER_REDIS_FAIL_OPEN:true}
 
   bootstrap:
     # Optional: provision the first ADMIN user on a fresh deployment.

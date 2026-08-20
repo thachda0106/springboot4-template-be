@@ -5,6 +5,7 @@ import com.example.app.user.domain.exception.UserNotFoundException;
 import com.example.app.user.domain.model.User;
 import com.example.app.user.domain.model.UserId;
 import com.example.app.user.domain.repository.UserRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +26,9 @@ public class UserLookupService implements UserLookup {
 
     @Override
     @Transactional(readOnly = true)
+    // Cached in Redis (user-summaries:<userId>, 60s TTL backstop). All writes go through
+    // the use cases, which evict this cache. On a Redis outage the cache fails open (miss -> DB).
+    @Cacheable(cacheNames = "user-summaries", key = "#userId")
     public Optional<Summary> findById(String userId) {
         return userRepository.findById(UserId.from(java.util.UUID.fromString(userId)))
                 .map(user -> new Summary(user.id().value().toString(), user.name()));

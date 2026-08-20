@@ -16,9 +16,11 @@ and operational requirements justify it.
 | Modularity | Spring Modulith 2.1.0 (module detection + architecture verification + in-process transactional events) |
 | Architecture | Domain-Driven Design, bounded contexts, hexagonal layering per module, event-driven module communication |
 | Security | Spring Security 7.1, first-party JWT issuance (login/refresh/logout), RBAC |
+| Security | Spring Security 7.1, first-party JWT issuance (login/refresh/logout), RBAC, Redis distributed per-IP rate limiting (fixed-window, fail-open) |
 | Persistence | Spring Data JPA / Hibernate 7.4, PostgreSQL, Flyway 12 migrations |
+| Caching | Redis read cache via Spring Cache (`@Cacheable`/`@CacheEvict`, 60s TTL, fail-open) |
 | Observability | Spring Boot Actuator, Micrometer + Prometheus, Micrometer Tracing (OpenTelemetry), structured (ECS) logging in prod/test, request logging |
-| Testing | JUnit 5, Mockito, MockMvc, Testcontainers (real PostgreSQL) |
+| Testing | JUnit 5, Mockito, MockMvc, Testcontainers (real PostgreSQL + Redis) |
 
 ---
 
@@ -263,13 +265,13 @@ Prerequisites: JDK 21, Docker (Desktop), and (on Windows) `mvnw.cmd`; on Linux/m
 
 ```bash
 docker compose up --build
-# app on http://localhost:8080 (local profile, HMAC JWT mode), PostgreSQL on 5432
+# app on http://localhost:8080 (local profile, HMAC JWT mode), PostgreSQL on 5432, Redis on 6379
 ```
 
-### Option B — run locally against your own PostgreSQL
+### Option B — run locally against your own PostgreSQL + Redis
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres redis
 ./mvnw compile spring-boot:run -Dspring-boot.run.profiles=local        # Linux/macOS
 mvnw.cmd compile spring-boot:run -Dspring-boot.run.profiles=local     # Windows
 ```

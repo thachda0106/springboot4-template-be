@@ -15,6 +15,17 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    # Distributed rate limiting + read cache (fail-open on outage, see docs/security.md §8).
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     build: .
     environment:
@@ -26,11 +37,14 @@ services:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       JWT_LOCAL_SECRET: local-dev-secret-change-me-0123456789abcdef
+      REDIS_HOST: redis
       TZ: UTC
     ports:
       - "8080:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   jaeger:

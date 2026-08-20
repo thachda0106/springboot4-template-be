@@ -134,7 +134,105 @@ this reviewed matrix.
 Both use the same `ApiError` contract as every other error. No internal security details
 are exposed.
 
-## 7. Local development
+## 7. CORS
+
+Browser clients (SPAs) call the API cross-origin. The allowed origins are configured in
+`app.security.cors.allowed-origins` (env `CORS_ALLOWED_ORIGINS`, comma-separated; default
+`http://localhost:3000` for local development):
+
+```yaml
+app:
+  security:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,https://app.example.com}
+```
+
+- Methods: `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS`; allowed headers `*`; preflight cache
+  `maxAge` 3600s.
+- **`allowCredentials(false)` is deliberate**: authentication uses a JWT bearer header, never
+  cookies, so credentials-based requests — which would require exact origin matching and make
+  wildcard headers impossible — are not supported.
+- Preflights (OPTIONS) are answered by Spring Security's `CorsFilter` before any limiting layer
+  and never consume rate-limit permits.
+
+## 8. Rate limiting and throttling
+
+Two per-client-IP layers protect the API, backed by **Redis fixed-window counters**
+(`RedisFixedWindowRateLimiter`, atomic Lua `INCR`+`EXPIRE`). The request thread is never
+blocked; over-limit requests get an immediate 429:
+
+| Layer | Window | Default | 429 `code` |
+|---|---|---|---|
+| `ThrottleFilter` (burst) | `throttle.limit-refresh-period` | 20 req / 1s | `THROTTLED` |
+| `RateLimitFilter` (quota) | `rate-limit.limit-refresh-period` | 100 req / 1m | `RATE_LIMITED` |
+
+Chain order: CORS → throttle → rate limit → authentication. The shortest window fails first.
+The layers sit before authentication, so anonymous endpoints (login, refresh) are covered too.
+Both are disabled in the test profile (`enabled: false`) — a disabled layer is absent from the
+filter chain entirely.
+
+```yaml
+app:
+  security:
+    throttle:
+      enabled: true
+      limit-for-period: ${THROTTLE_LIMIT:20}
+      limit-refresh-period: 1s
+    rate-limit:
+      enabled: true
+      limit-for-period: ${RATE_LIMIT_MAX:100}
+      limit-refresh-period: 1m
+    limiter:
+      redis-fail-open: ${LIMITER_REDIS_FAIL_OPEN:true}
+```
+
+- **Distributed by construction**: each window is a Redis key `app:limit:{layer}:{ip}` with a
+  TTL equal to the window. The key expires with the window — no idle-eviction sweep is needed —
+  and limits hold across instances (a horizontally scaled deployment shares one Redis).
+- **429 contract**: shared `ApiError` (`code=RATE_LIMITED` / `THROTTLED`, RFC 6585
+  `Retry-After: <refresh seconds>` header):
+  ```json
+  { "code": "RATE_LIMITED", "message": "Rate limit exceeded, please retry later", "timestamp": "...", "path": "/api/v1/activities" }
+  ```
+- **Actuator exclusion**: `/actuator/**` never passes through the limiters — health probes and
+  the Prometheus scraper are never limited.
+- **Fail-open on Redis outage** (availability > strict limiting): a connection failure or
+  command timeout (`RedisSystemException`, raised by the configured
+  `spring.data.redis.timeout` when Redis is slow or hung) logs a WARN, increments the
+  `app.security.limiter.failopen` meter (tag `layer`) and **allows** the request. Set
+  `app.security.limiter.redis-fail-open=false` to fail closed (500) instead. In production the
+  trade-off is deliberate: a silent rate-limit loss is the price of availability — **alert on
+  the failopen meter** so the degradation is visible.
+- **Command timeout**: `spring.data.redis.timeout` / `connect-timeout` (default 500ms) turn a
+  hung/slow Redis into a fail-open event instead of a blocked request thread.
+- **Deployment assumptions**: the limiter keys on `request.getRemoteAddr()` — a trusted
+  reverse proxy in front collapses every client into one IP (the shared budget then applies to
+  everyone). Either terminate the proxy before the app or move limiting to the gateway. Scale-out
+  beyond a single Redis instance requires Redis cluster/sentinel.
+- **Fixed-window property**: a fixed window allows up to 2× the limit at window edges (classic
+  fixed-window behavior) — accepted for this design.
+- **429 counts**: observable via the request-log `http.response.status_code` / `event.outcome`
+  fields (the per-IP Resilience4j meters are gone with the in-memory limiters).
+
+## 9. Resilience4j fault tolerance
+
+`resilience4j-spring-boot4` (v2.4.0, the Spring Boot 4 starter) is on the classpath with
+`spring-boot-starter-aspectj` (annotation support).
+
+- **Not used today — shipped as library + config**: Retry / CircuitBreaker / TimeLimiter /
+  Bulkhead. The application makes zero outbound HTTP calls today, so no `@Retry`/`@CircuitBreaker`
+  annotations exist — nothing speculative. (The per-IP `RateLimiter` usage was replaced by the
+  Redis fixed-window counters in §8.) When the first outbound integration lands, apply the
+  standard patterns on the integration client:
+  - `@Retry` for transient failures (5xx, timeouts) on idempotent calls;
+  - `@CircuitBreaker` around retries so a failing dependency does not pile up load;
+  - `@TimeLimiter` (async) for hard deadlines;
+  - `@Bulkhead` to bound concurrent in-flight calls to a dependency.
+  - Configure instances under `resilience4j.*` (e.g. `resilience4j.retry.instances.*`,
+    `resilience4j.circuitbreaker.instances.*`); the starter auto-configures the registries,
+    actuator health indicators and (unless disabled) meters.
+
+## 10. Local development
 
 Security is **never disabled** — not even locally. Local mode uses the HMAC secret, so tokens
 are still signature-validated. To get a token:
@@ -157,7 +255,7 @@ export BOOTSTRAP_ADMIN_EMAIL=admin@example.com BOOTSTRAP_ADMIN_PASSWORD='change-
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-## 8. Production
+## 11. Production
 
 ### 8.1 RSA key pair
 
@@ -191,7 +289,7 @@ Switching signing trust invalidates existing sessions. Procedure:
 3. Rollback: redeploy with the previous keys and re-issue. Access tokens signed with the old
    key are rejected once the decoder uses the new public key.
 
-## 9. Legacy users and password recovery
+## 12. Legacy users and password recovery
 
 - Users created before this feature have a **null** `password_hash` and role `USER`. They
   cannot log in (uniform 401) until an operator sets a password.
@@ -201,7 +299,7 @@ Switching signing trust invalidates existing sessions. Procedure:
 - Password change/reset flows, rate limiting, and authentication audit metrics are **out of
   scope** for this iteration (see §11).
 
-## 10. Why security does not belong in the domain layer
+## 13. Why security does not belong in the domain layer
 
 Domain invariants and business rules should hold regardless of transport or caller. If domain
 code read `SecurityContext` directly:
@@ -217,9 +315,12 @@ on user-owned ports (`PasswordHasher`, `AccessTokenIssuer`); the security-module
 confined to `infrastructure/security` adapters. The architecture tests enforce the direction
 by construction.
 
-## 11. Documented limitations (out of scope)
+## 14. Documented limitations (out of scope)
 
-- **Rate limiting / lockout**: not implemented; expected to be provided by an upstream gateway.
+- **Account lockout / per-user limiting**: only per-IP limiting exists (see §8). Per-user limits
+  are possible later (the login endpoints have no user identity until authenticated); lockout on
+  repeated failed logins is not implemented. Limiting is distributed via Redis (see §8) — a
+  scaled-out deployment shares one limiter store.
 - **Authentication audit metrics**: login success/failure counters exist
   (`app.auth.logins`, see docs/observability.md); no per-user audit trail or alerting.
 - **Password change / forgot-password / reset flows**: not implemented; see §9 workaround.

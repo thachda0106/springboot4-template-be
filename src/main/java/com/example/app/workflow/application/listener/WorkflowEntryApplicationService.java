@@ -4,6 +4,7 @@ import com.example.app.shared.AfterCommitMetrics;
 import com.example.app.workflow.domain.model.WorkflowEntry;
 import com.example.app.workflow.domain.repository.WorkflowEntryRepository;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,10 @@ public class WorkflowEntryApplicationService {
     }
 
     @Transactional
+    // Evict-after-invoke (default) is deliberate: eviction runs before commit; a concurrent
+    // reader may re-cache the pre-commit value for <=60s (TTL backstop). Do NOT switch to
+    // beforeInvocation=true - on rollback the cache would be cold for a value that still exists.
+    @CacheEvict(cacheNames = "workflow-entries", key = "#activityId")
     public void onActivityCreated(UUID activityId, String activityName) {
         if (workflowEntryRepository.findByActivityId(activityId).isPresent()) {
             return; // duplicate delivery - already processed
@@ -42,6 +47,10 @@ public class WorkflowEntryApplicationService {
     }
 
     @Transactional
+    // Evict-after-invoke (default) is deliberate: eviction runs before commit; a concurrent
+    // reader may re-cache the pre-commit value for <=60s (TTL backstop). Do NOT switch to
+    // beforeInvocation=true - on rollback the cache would be cold for a value that still exists.
+    @CacheEvict(cacheNames = "workflow-entries", key = "#activityId")
     public void onActivityUpdated(UUID activityId, String activityName) {
         WorkflowEntry entry = workflowEntryRepository.findByActivityId(activityId).orElse(null);
         if (entry == null) {
@@ -55,6 +64,10 @@ public class WorkflowEntryApplicationService {
     }
 
     @Transactional
+    // Evict-after-invoke (default) is deliberate: eviction runs before commit; a concurrent
+    // reader may re-cache the pre-commit value for <=60s (TTL backstop). Do NOT switch to
+    // beforeInvocation=true - on rollback the cache would be cold for a value that still exists.
+    @CacheEvict(cacheNames = "workflow-entries", key = "#activityId")
     public void onActivityDeleted(UUID activityId) {
         workflowEntryRepository.findByActivityId(activityId).ifPresent(workflowEntryRepository::delete);
     }

@@ -25,6 +25,10 @@
         <!-- springdoc 3.x is the Spring Boot 4 / Framework 7 line; 3.1.0 targets Boot 4.1.0.
              Do NOT downgrade to the 2.x line (Boot 3 only). -->
         <springdoc.version>3.1.0</springdoc.version>
+        <!-- Resilience4j 2.4.0 is the first release with a dedicated Spring Boot 4 starter
+             (resilience4j-spring-boot4); the rate-limit/throttle filters use the core
+             RateLimiter API, the starter brings the auto-configuration. -->
+        <resilience4j.version>2.4.0</resilience4j.version>
     </properties>
 
     <dependencyManagement>
@@ -59,6 +63,17 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
+        <!-- Redis: distributed rate limiting (security module, fixed-window counters)
+             and the read cache (Spring Cache abstraction). Lettuce client. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+
         <!-- Security: OAuth2 Resource Server with JWT bearer tokens -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -67,6 +82,23 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- AOP for Resilience4j annotation support (aspects; @RateLimiter/@Retry/... on
+             future outbound integrations). Boot 4 renamed the AOP starter to
+             spring-boot-starter-aspectj. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+        </dependency>
+        <!-- Resilience4j 2.4.0: Spring Boot 4 starter. The rate-limit/throttle filters in the
+             security module use the core RateLimiter API (per-IP instances from a registry);
+             the starter's auto-configuration and health integration are ready for the first
+             outbound fault-tolerance usage (see docs/security.md "Resilience4j"). -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot4</artifactId>
+            <version>${resilience4j.version}</version>
         </dependency>
 
         <!-- Database migrations -->

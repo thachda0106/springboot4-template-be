@@ -37,6 +37,31 @@ spring:
   jackson:
     default-property-inclusion: non_null
 
+  # Redis: distributed rate limiting (security module) + read cache (Spring Cache).
+  # Fail-open on outage (availability > strict limiting/caching): the limiter and the
+  # cache error handler log and fall through to the database. The command timeout is
+  # what turns a hung/slow Redis into a fail-open event instead of a blocked request
+  # thread (see docs/security.md §8 and docs/architecture.md "Redis").
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # Lettuce command timeout: a slow/hung Redis raises RedisSystemException instead
+      # of stalling request threads; the limiter catches it and fails open.
+      timeout: ${REDIS_TIMEOUT:500ms}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:500ms}
+
+  cache:
+    type: redis
+    redis:
+      # TTL backstop: even if an eviction is lost (e.g. Redis outage), stale reads
+      # expire within 60s. Optimistic locking keeps stale reads safe (409 on update).
+      time-to-live: ${CACHE_TTL:60s}
+      # Optional.empty() serializes to the bytes "null" and IS stored (the cache
+      # writer sees a non-null Optional) - missing users are negative-cached for the
+      # TTL. CreateUserUseCase evicts user-summaries on every create, healing misses.
+      cache-null-values: false
+
 # API documentation (OpenAPI spec + Swagger UI). Paths are explicit here;
 # prod disables the endpoints entirely (see application-prod.yml).
 springdoc:
@@ -111,6 +136,33 @@ logging:
     console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%thread] [%X{traceId:-},%X{spanId:-}] %logger{40} - %msg%n"
   level:
     com.example.app: INFO
+
+app:
+  security:
+    # CORS for browser clients (SPAs). Comma-separated origins; no credentials
+    # (JWT bearer header, no cookies - see docs/security.md "CORS").
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    # Burst layer: max requests per IP within the short window. Non-blocking:
+    # over-capacity requests get an immediate 429 (code=THROTTLED).
+    throttle:
+      enabled: true
+      limit-for-period: ${THROTTLE_LIMIT:20}
+      limit-refresh-period: 1s
+    # Quota layer: max requests per IP within the sustained window (429 code=RATE_LIMITED).
+    rate-limit:
+      enabled: true
+      limit-for-period: ${RATE_LIMIT_MAX:100}
+      limit-refresh-period: 1m
+    # Redis-backed limiting fails OPEN on a Redis outage (availability > strict
+    # limiting): the request is allowed and the failure is logged + counted
+    # (app.security.limiter.failopen meter). Set to false to fail closed (500).
+    limiter:
+      redis-fail-open: ${LIMITER_REDIS_FAIL_OPEN:true}
+
+# Resilience4j remains on the classpath for future outbound fault tolerance only
+# (docs/security.md §9); the per-IP limiters are gone (replaced by Redis fixed-window
+# counters, docs/security.md §8), so no ratelimiter configuration is needed here.
 
 ---
 # Datasource and JWT issuer are environment-specific:

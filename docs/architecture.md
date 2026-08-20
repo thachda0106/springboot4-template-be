@@ -112,7 +112,9 @@ module, and (via the whitelist) any dependency not listed above. See
   technical abstraction every module may use; no module ever touches
   `SecurityContext`/`Jwt`/`Authentication` directly.
 - **shared** — root package: `ApiError` + `GlobalExceptionHandler` + `ConflictException`
-  + `OpenApiConfig` (OpenAPI/Swagger UI docs, JWT bearer scheme).
+  + `OpenApiConfig` (OpenAPI/Swagger UI docs, JWT bearer scheme) + the Redis cache
+  infrastructure (`CacheConfig`, `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`,
+  `RedisCacheConfigurer`).
   Cross-cutting *technical* concerns only.
 
 ## 6. Security architecture (summary)
@@ -140,6 +142,39 @@ own `REQUIRES_NEW` transaction. No broker, no outbox in this stage.
   documented in [module-boundaries.md](module-boundaries.md).
 - Optimistic locking via `@Version` on mutable aggregates (activities, workflow entries).
 
+## 8a. Redis (distributed rate limiting + read cache)
+
+Redis is a **secondary store** — it holds no source-of-truth data, only limiter counters and
+cache entries. The PostgreSQL database remains the system of record.
+
+- **Distributed rate limiting** (security module): fixed-window counters
+  (`app:limit:{layer}:{ip}`, atomic Lua `INCR`+`EXPIRE`, TTL = window). Limits hold across
+  instances. See [security.md](security.md) §8.
+- **Read cache** (Spring Cache): `@Cacheable` on the three read paths
+  (`GetActivityQuery.findById` → `activities:{id}`, `GetWorkflowEntryQuery.findByActivityId` →
+  `workflow-entries:{activityId}`, `UserLookupService.findById` → `user-summaries:{id}`);
+  `@CacheEvict` on every write use case (all writes go through use cases, so invalidation is
+  complete). TTL backstop 60s (`spring.cache.redis.time-to-live`).
+- **Fail-open on Redis outage**: the cache error handler and the limiter log + fall through to
+  the database (availability over strict limiting/caching). The command timeout
+  (`spring.data.redis.timeout`, 500ms) turns a hung Redis into a fail-open event instead of a
+  blocked request thread.
+- **Stale-read posture**: eviction runs before the write transaction commits (evict-after-invoke
+  default), so a concurrent reader can re-cache the pre-commit value for up to the TTL. Safe
+  because optimistic locking turns a stale update into a 409 (client retries) and the TTL bounds
+  the window. The trade-off is pinned in code comments at every eviction site.
+- **Negative caching**: `Optional.empty()` serializes to the bytes `"null"` and IS stored
+  (the cache writer sees a non-null `Optional`), so missing users are negative-cached for the
+  TTL. `CreateUserUseCase` evicts `user-summaries` on every create, healing misses.
+- **Cache stampede**: concurrent misses on a cold key hit the DB; on a Redis outage every
+  request is a DB read with no load shedding. Accepted at template scale (`sync=true` provides
+  only best-effort single-flight without a distributed lock).
+- **Infrastructure**: cache config lives flat in `shared` (`CacheConfig`,
+  `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`, `RedisCacheConfigurer`); per-cache typed
+  serializers live in the owning business modules (module-local Jackson mixins keep the domain
+  annotation-free). Redis connection is auto-configured by `spring-boot-starter-data-redis`
+  (Lettuce) from `spring.data.redis.*`.
+
 ## 9. Known trade-offs and risks
 
 | Decision | Trade-off |
@@ -151,11 +186,15 @@ own `REQUIRES_NEW` transaction. No broker, no outbox in this stage.
 | HMAC secret mode for local/test | Real signature validation without an IdP; no issuer validation in that mode (impossible in prod: the property is absent there) |
 | Scope-based authorization | Simple, standard; fine-grained claims (e.g. per-tenant) would need a custom converter |
 | Shared `GlobalExceptionHandler` catches `Exception` | Guarantees no stack-trace leaks; module advices MUST be `@Order(HIGHEST_PRECEDENCE)` because Spring's exception resolution takes the first matching advice, not the most specific one (verified: without `@Order`, the shared catch-all wins and business errors become 500s) |
+| Redis fail-open (limiter + cache) | Availability over strict limiting/caching: a Redis outage logs + counts and serves from the DB; the rate limit silently disappears (alert on `app.security.limiter.failopen`) |
+| Evict-before-commit (cache) | A concurrent reader can re-cache the pre-commit value for ≤60s (TTL backstop); optimistic locking keeps stale updates safe (409) |
+| Module-local Jackson mixins for cache serialization | Domain stays annotation-free; a small mixin class per cached domain type |
 
 ## 10. Non-goals (explicitly not implemented)
 
-Microservices, Kafka, Redis, Elasticsearch, Kubernetes manifests, Event Sourcing, CQRS
+Microservices, Kafka, Elasticsearch, Kubernetes manifests, Event Sourcing, CQRS
 infrastructure, Sagas, distributed transactions/locks, service discovery, API gateway,
 OAuth2 Authorization Server, custom IdP, custom JWT, per-module databases, per-module
-applications. These are discussed as future evolution only
+applications, Redis cluster/sentinel (single Redis instance; scale-out documented in
+[security.md](security.md) §8). These are discussed as future evolution only
 ([evolution-to-microservices.md](evolution-to-microservices.md)).

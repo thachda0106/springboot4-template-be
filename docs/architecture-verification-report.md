@@ -35,8 +35,10 @@ Test: `webmvc-test`, `validation-test`, `actuator-test`, `spring-security-test`,
 **Deliberately absent:** `spring-modulith-events-core` (its auto-configs require a durable
 publication registry — Stage 2), `spring-boot-testcontainers` (per-DB modules and
 `@ServiceConnection` factories were dropped in Testcontainers 2.x; `@DynamicPropertySource`
-is used instead), Kafka, Redis, any JWT library (nimbus comes with the resource-server
-starter), any CQRS/event-sourcing framework.
+is used instead), Kafka, any JWT library (nimbus comes with the resource-server starter),
+any CQRS/event-sourcing framework. **Present and deliberate:** Redis
+(`spring-boot-starter-data-redis` + `spring-boot-starter-cache`) for the distributed rate
+limiter and the read cache (§17b below, docs/security.md §8, docs/architecture.md §8a).
 
 ## 3. Module dependency graph (as verified by tests)
 
@@ -166,19 +168,26 @@ JPA↔domain bridge; `ddl-auto: validate` (schema owned by Flyway, 3 migrations)
 - Multi-stage build (maven:3.9-eclipse-temurin-21 → eclipse-temurin:21-jre-jammy,
   non-root `appuser`): ✅ image builds; `./mvnw` works on Linux; jar repackaged by Boot
   plugin.
-- `docker compose up -d`: ✅ postgres healthy, app healthy in ~12s.
+- `docker compose up -d`: ✅ postgres healthy, redis healthy, app healthy in ~12s.
 - Real-stack probes: 401 unauthenticated ✅ · 201 create user ✅ · 201 create activity ✅ ·
   workflow entry CREATED 18 ms later (event-driven) ✅ · PUT → ACTIVE v1 ✅ · workflow entry
   UPDATED ✅ · 403 FORBIDDEN JSON ✅ · `/actuator/prometheus` metrics ✅ · Flyway V1–V3
   migrations applied ✅.
+- Redis (integration tests + compose): rate limiter 429s (THROTTLED/RATE_LIMITED +
+  `Retry-After`) ✅ · cache populate/evict for `activities`, `workflow-entries`,
+  `user-summaries` ✅ · fail-open meters/logs on connection failure ✅.
 
 ## 18. Dependency review
 
-No Gradle files; no unnecessary starters; no Kafka/Redis/Elasticsearch/kubernetes;
+No Gradle files; no unnecessary starters; no Kafka/Elasticsearch/kubernetes;
 no JWT library beyond what the resource-server starter provides; no CQRS/event-sourcing
-framework; no per-module databases or apps. The only version override: Flyway 12.4.0 →
-12.11.0 (Boot BOM's 12.4.0 rejects PostgreSQL 16.14/17.10 with `Unsupported Database` —
-the support window predates those releases; 12.11.0 is the newest 12.x line).
+framework; no per-module databases or apps. Redis is present and deliberate:
+`spring-boot-starter-data-redis` (Lettuce) + `spring-boot-starter-cache` back the distributed
+rate limiter and the read cache (both fail open, see docs/security.md §8 and
+docs/architecture.md §8a) — Redis holds no source-of-truth data. The only version override:
+Flyway 12.4.0 → 12.11.0 (Boot BOM's 12.4.0 rejects PostgreSQL 16.14/17.10 with
+`Unsupported Database` — the support window predates those releases; 12.11.0 is the newest
+12.x line).
 
 ## 19. Known trade-offs (implemented, deliberate)
 
@@ -191,6 +200,8 @@ the support window predates those releases; 12.11.0 is the newest 12.x line).
 | HMAC local/test mode validates signatures but not issuer; impossible in prod (property absent there) | docs/security.md §3 |
 | Module advices must be `@Order(HIGHEST_PRECEDENCE)` (Spring takes the first matching advice, not the most specific) | docs/architecture.md §9, docs/transaction-boundaries.md §5 |
 | `saveAndFlush` in repository `save` (immediate INSERT so returned aggregates carry version/timestamps) | ActivityRepositoryAdapter javadoc |
+| Redis fail-open for the limiter + read cache (availability over strict limiting; the rate limit silently disappears on outage — alert on `app.security.limiter.failopen`) | docs/security.md §8, docs/architecture.md §8a |
+| Cache evict-before-commit (stale reads up to the 60s TTL; optimistic locking keeps updates safe) | docs/architecture.md §8a |
 
 ## 20. Future extraction candidates (documented, NOT implemented)
 
@@ -203,5 +214,6 @@ the support window predates those releases; 12.11.0 is the newest 12.x line).
 
 ---
 
-**Implemented vs documented:** Kafka, outbox, registry, microservices, distributed
-anything: **documented only**. Everything in §1–§18 was built and verified in this project.
+**Implemented vs documented:** Kafka, outbox, registry, microservices, Redis cluster/sentinel:
+**documented only**. Distributed rate limiting + read cache via a single Redis instance:
+**implemented**. Everything in §1–§18 was built and verified in this project.

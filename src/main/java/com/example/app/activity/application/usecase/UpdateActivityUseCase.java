@@ -8,6 +8,7 @@ import com.example.app.activity.domain.repository.ActivityRepository;
 import com.example.app.shared.AfterCommitMetrics;
 import com.example.app.shared.ConflictException;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,10 @@ public class UpdateActivityUseCase {
     }
 
     @Transactional
+    // Evict-after-invoke (default) is deliberate: eviction runs before commit; a concurrent
+    // reader may re-cache the pre-commit value for <=60s (TTL backstop). Do NOT switch to
+    // beforeInvocation=true - on rollback the cache would be cold for a value that still exists.
+    @CacheEvict(cacheNames = "activities", key = "#id")
     public Activity execute(ActivityId id, String name, String description, Long expectedVersion) {
         Activity activity = activityRepository.findById(id)
                 .orElseThrow(() -> new ActivityNotFoundException(id.value()));

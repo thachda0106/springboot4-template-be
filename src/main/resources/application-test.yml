@@ -8,6 +8,12 @@ app:
       audience: modular-monolith
       access-token-ttl: 15m
       refresh-token-ttl: 7d
+    # Per-IP limiting is disabled in integration tests: both layers are simply
+    # absent from the filter chain, so test traffic is never limited.
+    throttle:
+      enabled: false
+    rate-limit:
+      enabled: false
 
   bootstrap:
     # Optional: provision the first ADMIN user on a fresh deployment.
