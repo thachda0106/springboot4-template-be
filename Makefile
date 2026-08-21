@@ -3,7 +3,12 @@
 # Colons in target names are escaped with `\:` for GNU make portability
 # (invoke them normally, e.g. `make start:local`).
 
+# Windows cmd cannot run `./mvnw` (POSIX path); use mvnw.cmd there (git-bash keeps ./mvnw).
+ifeq ($(OS),Windows_NT)
+MW      := mvnw.cmd
+else
 MW      := ./mvnw
+endif
 COMPOSE := docker compose
 PY      := python
 
@@ -13,8 +18,8 @@ DB_USERNAME ?= postgres
 DB_PASSWORD ?= postgres
 
 .PHONY: help \
-        start\:local start\:prod \
-        docker\:up docker\:up\:app docker\:down docker\:logs docker\:ps \
+        start\:local start\:dev start\:prod \
+        docker\:up docker\:up\:dev docker\:up\:observability docker\:up\:app docker\:down docker\:logs docker\:ps \
         observability\:up observability\:down observability\:smoke \
         test verify build clean token
 
@@ -28,6 +33,10 @@ help:
 start\:local: docker\:up
 	$(MW) compile spring-boot:run -Dspring-boot.run.profiles=local
 
+## @target start:dev :: Run locally with all dev services (postgres + redis + observability) in Docker; hot-reloads on code changes
+start\:dev: docker\:up\:dev docker\:up\:observability
+	$(MW) compile spring-boot:run -Dspring-boot.run.profiles=local
+
 ## @target start:prod :: Production-like run (prod profile, RSA JWT). Needs JWT_PRIVATE_KEY/JWT_PUBLIC_KEY
 start\:prod: docker\:up
 	@test -n "$$JWT_PRIVATE_KEY" -a -n "$$JWT_PUBLIC_KEY" \
@@ -37,6 +46,16 @@ start\:prod: docker\:up
 ## @target docker:up :: Start the database (postgres) for native local runs
 docker\:up:
 	$(COMPOSE) up -d postgres
+
+## @target docker:up:dev :: Start all services needed for native local runs (postgres + redis)
+docker\:up\:dev:
+	$(COMPOSE) up -d postgres redis
+
+## @target docker:up:observability :: Start the observability stack (Jaeger/Collector/Prometheus/Grafana) + mint scraper token
+docker\:up\:observability:
+	@$(PY) -c "import os; os.makedirs('.observability', exist_ok=True)"
+	$(PY) scripts/mint-local-jwt.py --sub scraper-1 --scope prometheus --role NONE --secret "$(JWT_LOCAL_SECRET:-local-dev-secret-change-me-0123456789abcdef)" --exp-hours 720 > .observability/scraper-token
+	$(COMPOSE) --profile observability up -d prometheus jaeger grafana otel-collector
 
 ## @target docker:up:app :: Build and start the full stack in containers (app + postgres)
 docker\:up\:app:
