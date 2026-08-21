@@ -1,6 +1,6 @@
 package com.example.app.unit;
 
-import com.example.app.workflow.application.config.WorkflowEntryCacheMixin;
+import com.example.app.workflow.infrastructure.cache.WorkflowEntryCacheMixin;
 import com.example.app.workflow.domain.model.WorkflowEntry;
 import com.example.app.workflow.domain.model.WorkflowEntryStatus;
 import org.junit.jupiter.api.Test;

@@ -1,6 +1,6 @@
 package com.example.app.unit;
 
-import com.example.app.activity.application.config.ActivityCacheMixin;
+import com.example.app.activity.infrastructure.cache.ActivityCacheMixin;
 import com.example.app.activity.domain.model.Activity;
 import com.example.app.activity.domain.model.ActivityId;
 import com.example.app.activity.domain.model.ActivityStatus;

@@ -1,4 +1,4 @@
-package com.example.app.workflow.application.config;
+package com.example.app.workflow.infrastructure.cache;
 
 import com.example.app.shared.RedisCacheConfigurer;
 import com.example.app.workflow.domain.model.WorkflowEntry;

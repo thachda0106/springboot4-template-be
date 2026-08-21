@@ -1,4 +1,4 @@
-package com.example.app.user.application.config;
+package com.example.app.user.infrastructure.cache;
 
 import com.example.app.shared.RedisCacheConfigurer;
 import com.example.app.user.UserLookup;

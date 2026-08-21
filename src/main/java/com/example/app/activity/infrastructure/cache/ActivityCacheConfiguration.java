@@ -1,4 +1,4 @@
-package com.example.app.activity.application.config;
+package com.example.app.activity.infrastructure.cache;
 
 import com.example.app.activity.domain.model.Activity;
 import com.example.app.shared.RedisCacheConfigurer;

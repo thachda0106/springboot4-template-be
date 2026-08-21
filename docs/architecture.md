@@ -54,7 +54,8 @@ domain (models, invariants, events, repository interfaces)
    ▲
    │  implements
    │
-infrastructure (JPA entities, Spring Data, repository implementations)
+infrastructure (JPA entities, Spring Data, repository implementations,
+               cache serialization adapters — per-module `infrastructure/cache`, `infrastructure/config`)
 ```
 
 Rules enforced by construction (package structure + Modulith verification):

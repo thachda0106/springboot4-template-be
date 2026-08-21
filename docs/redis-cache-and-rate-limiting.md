@@ -12,11 +12,11 @@ Deep dive into the staged changes: a Redis-backed read cache (Spring Cache, thre
 | `CacheDefaultsConfig` | `shared/cache/CacheDefaultsConfig.java` | Shared Redis cache defaults bean: TTL, key prefix, string key serializer, JSON value serializer, null-caching off. |
 | `FailOpenCacheErrorHandler` | `shared/cache/FailOpenCacheErrorHandler.java` | Logs and swallows every cache operation error → Redis outage degrades to DB reads, never 500s. |
 | `RedisCacheConfigurer` | `shared/RedisCacheConfigurer.java` | Contributor contract so `shared` never imports business types. |
-| `ActivityCacheConfiguration` | `activity/application/config/ActivityCacheConfiguration.java` | Contributes the `activities` cache (typed serializer + `ActivityCacheMixin`). |
-| `ActivityCacheMixin` | `activity/application/config/ActivityCacheMixin.java` | Jackson property-shape declaration for the annotation-free `Activity` domain class. |
-| `WorkflowEntryCacheConfiguration` | `workflow/application/config/WorkflowEntryCacheConfiguration.java` | Contributes the `workflow-entries` cache. |
-| `WorkflowEntryCacheMixin` | `workflow/application/config/WorkflowEntryCacheMixin.java` | Jackson property-shape declaration for `WorkflowEntry`. |
-| `UserSummaryCacheConfiguration` | `user/application/config/UserSummaryCacheConfiguration.java` | Contributes the `user-summaries` cache (`Optional<Summary>`, records need no mixin). |
+| `ActivityCacheConfiguration` | `activity/infrastructure/cache/ActivityCacheConfiguration.java` | Contributes the `activities` cache (typed serializer + `ActivityCacheMixin`). |
+| `ActivityCacheMixin` | `activity/infrastructure/cache/ActivityCacheMixin.java` | Jackson property-shape declaration for the annotation-free `Activity` domain class. |
+| `WorkflowEntryCacheConfiguration` | `workflow/infrastructure/cache/WorkflowEntryCacheConfiguration.java` | Contributes the `workflow-entries` cache. |
+| `WorkflowEntryCacheMixin` | `workflow/infrastructure/cache/WorkflowEntryCacheMixin.java` | Jackson property-shape declaration for `WorkflowEntry`. |
+| `UserSummaryCacheConfiguration` | `user/infrastructure/cache/UserSummaryCacheConfiguration.java` | Contributes the `user-summaries` cache (`Optional<Summary>`, records need no mixin). |
 | `GetActivityQuery` | `activity/application/query/GetActivityQuery.java` | Read path, now `@Cacheable("activities")`. |
 | `GetWorkflowEntryQuery` | `workflow/application/query/GetWorkflowEntryQuery.java` | Read path, now `@Cacheable("workflow-entries")`. |
 | `UserLookupService` | `user/application/query/UserLookupService.java` | Cross-module lookup, `findById` now `@Cacheable("user-summaries")`. |
@@ -502,15 +502,15 @@ modular-monolith/
 │   │       ├── ThrottleFilter.java        #    burst layer (THROTTLED, 20/1s)
 │   │       └── RateLimitFilter.java       #    quota layer (RATE_LIMITED, 100/1m)
 │   ├── activity/
-│   │   ├── application/config/            #    ActivityCacheConfiguration + ActivityCacheMixin
+│   │   ├── infrastructure/cache/          #    ActivityCacheConfiguration + ActivityCacheMixin
 │   │   ├── application/query/GetActivityQuery.java        # @Cacheable("activities")
 │   │   └── application/usecase/{Create,Update,Delete}ActivityUseCase.java  # @CacheEvict("activities")
 │   ├── user/
-│   │   ├── application/config/UserSummaryCacheConfiguration.java  # Optional<Summary>, no mixin
+│   │   ├── infrastructure/cache/UserSummaryCacheConfiguration.java  # Optional<Summary>, no mixin
 │   │   ├── application/query/UserLookupService.java                # @Cacheable("user-summaries")
 │   │   └── application/usecase/CreateUserUseCase.java              # @CacheEvict("user-summaries")
 │   └── workflow/
-│       ├── application/config/            #    WorkflowEntryCacheConfiguration + WorkflowEntryCacheMixin
+│       ├── infrastructure/cache/          #    WorkflowEntryCacheConfiguration + WorkflowEntryCacheMixin
 │       ├── application/listener/WorkflowEntryApplicationService.java  # 3× @CacheEvict("workflow-entries")
 │       └── application/query/GetWorkflowEntryQuery.java              # @Cacheable("workflow-entries")
 └── src/test/java/com/example/app/

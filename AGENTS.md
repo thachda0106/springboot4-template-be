@@ -15,15 +15,22 @@ Modulith modules, one PostgreSQL DB, OAuth2 Resource Server (JWT). Java 21, Mave
 
 - Modules: `activity`, `workflow`, `user` (bounded contexts) + `security`, `shared`. **No global
   `controller/`/`service/`/`repository/` packages.** Each module: `api/`, `application/`,
-  `domain/`, `infrastructure/persistence/`.
+  `domain/`, `infrastructure/`.
 - **Standard module layout (DDD + concern grouping) — all future code must follow it:**
   - Business modules (`user`, `activity`, `workflow`): `application/` is **grouped by concern**,
     never flat: `usecase/` (command orchestrators), `query/` (read paths), `port/`
     (application-owned interfaces implemented by adapters), `policy/` (config-driven rules,
     e.g. TTL, BCrypt limits), `factory/` (aggregate/token factories), `bootstrap/`
-    (startup provisioning), `config/` (application-layer `@Configuration`), `result/`
-    (use-case result records), `listener/` (event consumers + the services they delegate to).
+    (startup provisioning), `result/` (use-case result records), `listener/` (event consumers
+    + the services they delegate to).
     Use only the groups that apply; a flat `application/` or ad-hoc grouping is a violation.
+    `application/` holds **no** `@Configuration` classes — infrastructure-boundary config
+    (`@Configuration` + serializers/mixins) belongs in `infrastructure/`.
+  - Business modules `infrastructure/` is grouped by concern: `persistence/` (JPA entities,
+    mappers, repository adapters), `cache/` (per-cache `@Configuration` contributors +
+    Jackson mixins, e.g. `ActivityCacheConfiguration`), `security/` (adapter wrappers around
+    the `security` module, e.g. `PasswordHasherAdapter`), `config/` (other infrastructure
+    `@Configuration`, e.g. `ClockConfig`). Use only the groups that apply.
   - `security` is a technical module, not a DDD context: the module **root is its public API**
     (`CurrentUser`, `CurrentUserProvider`, `SecurityContextCurrentUserProvider`); internals are
     grouped: `jwt/` (issuance + validation — exposed to `user` via `@NamedInterface("jwt")`,
