@@ -26,6 +26,27 @@ services:
       timeout: 3s
       retries: 10
 
+  redis-insight:
+    # RedisInsight web UI for the local redis (loopback only). The connection to
+    # the compose redis service is preconfigured via RI_REDIS_* env vars.
+    image: redis/redisinsight:3.8.0
+    ports:
+      - "127.0.0.1:5540:5540" # RedisInsight UI (loopback only)
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: "6379"
+      RI_REDIS_ALIAS: local-redis
+    volumes:
+      - redis-insight-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:5540/api/health/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     build: .
     environment:
@@ -106,3 +127,4 @@ services:
 
 volumes:
   postgres-data:
+  redis-insight-data:

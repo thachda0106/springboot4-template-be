@@ -354,8 +354,8 @@ src/main/java/com/example/app/
 ├── user/
 │   └── api/UserController.java         consumer: /me uses currentUser().id()
 ├── shared/
-│   ├── ApiError.java                   error contract used by both handlers
-│   └── GlobalExceptionHandler.java     other error paths (400/404/409/500), same ApiError
+│   ├── ApiError.java                   error contract used by both handlers (root)
+│   └── error/GlobalExceptionHandler.java  other error paths (400/404/409/500), same ApiError
 ├── workflow/api/WorkflowController.java  authenticated-only; never uses CurrentUserProvider
 ├── Application.java                    Spring Boot entry point
 src/main/resources/

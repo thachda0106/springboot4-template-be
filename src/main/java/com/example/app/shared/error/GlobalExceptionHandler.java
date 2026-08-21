@@ -1,5 +1,7 @@
-package com.example.app.shared;
+package com.example.app.shared.error;
 
+import com.example.app.shared.ApiError;
+import com.example.app.shared.ConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

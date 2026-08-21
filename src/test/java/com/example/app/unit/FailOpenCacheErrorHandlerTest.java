@@ -1,6 +1,6 @@
 package com.example.app.unit;
 
-import com.example.app.shared.FailOpenCacheErrorHandler;
+import com.example.app.shared.cache.FailOpenCacheErrorHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.cache.Cache;
 import org.springframework.cache.interceptor.CacheErrorHandler;

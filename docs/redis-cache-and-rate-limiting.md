@@ -8,9 +8,9 @@ Deep dive into the staged changes: a Redis-backed read cache (Spring Cache, thre
 
 | Name | Path (src/main/java/...) | Role |
 |---|---|---|
-| `CacheConfig` | `shared/CacheConfig.java` | Builds the single app-wide `RedisCacheManager` from shared defaults + per-cache contributions; installs the fail-open error handler. |
-| `CacheDefaultsConfig` | `shared/CacheDefaultsConfig.java` | Shared Redis cache defaults bean: TTL, key prefix, string key serializer, JSON value serializer, null-caching off. |
-| `FailOpenCacheErrorHandler` | `shared/FailOpenCacheErrorHandler.java` | Logs and swallows every cache operation error → Redis outage degrades to DB reads, never 500s. |
+| `CacheConfig` | `shared/cache/CacheConfig.java` | Builds the single app-wide `RedisCacheManager` from shared defaults + per-cache contributions; installs the fail-open error handler. |
+| `CacheDefaultsConfig` | `shared/cache/CacheDefaultsConfig.java` | Shared Redis cache defaults bean: TTL, key prefix, string key serializer, JSON value serializer, null-caching off. |
+| `FailOpenCacheErrorHandler` | `shared/cache/FailOpenCacheErrorHandler.java` | Logs and swallows every cache operation error → Redis outage degrades to DB reads, never 500s. |
 | `RedisCacheConfigurer` | `shared/RedisCacheConfigurer.java` | Contributor contract so `shared` never imports business types. |
 | `ActivityCacheConfiguration` | `activity/application/config/ActivityCacheConfiguration.java` | Contributes the `activities` cache (typed serializer + `ActivityCacheMixin`). |
 | `ActivityCacheMixin` | `activity/application/config/ActivityCacheMixin.java` | Jackson property-shape declaration for the annotation-free `Activity` domain class. |
@@ -30,7 +30,7 @@ Deep dive into the staged changes: a Redis-backed read cache (Spring Cache, thre
 | `CorsConfig` | `security/config/CorsConfig.java` | CORS for browser clients; no credentials (JWT bearer, no cookies). |
 | `SecurityConfig` | `security/config/SecurityConfig.java` | Filter chain: CORS → Throttle → RateLimit → JWT auth → authorization; builds limiters as beans, filters inline. |
 | Config deltas | `application.yml`, `application-prod.yml`, `application-test.yml` | Redis connection, cache TTL, limiter defaults, prod env-var surface, tests disable limiting. |
-| Dependency deltas | `pom.xml`, `docker-compose.yml` | `spring-boot-starter-data-redis`, `-cache`, `-aspectj`, `resilience4j-spring-boot4`; `redis:7-alpine` service. |
+| Dependency deltas | `pom.xml`, `docker-compose.yml` | `spring-boot-starter-data-redis`, `-cache`, `-aspectj`, `resilience4j-spring-boot4`; `redis:7-alpine` service + `redis/redisinsight:3.8.0` UI (loopback :5540, preconfigured to the compose redis). |
 
 ---
 
@@ -479,18 +479,19 @@ RedisCacheConfigurer activityCacheConfigurer(RedisCacheConfiguration cacheDefaul
 
 ```
 modular-monolith/
-├── docker-compose.yml                     # + redis:7-alpine service (healthcheck, app depends_on)
+├── docker-compose.yml                     # + redis:7-alpine service (healthcheck, app depends_on) + redis-insight UI (:5540, loopback)
 ├── pom.xml                                # + data-redis, cache, aspectj starters; resilience4j-spring-boot4 2.4.0
 ├── src/main/resources/
 │   ├── application.yml                    # redis conn/timeouts, cache TTL, app.security.* defaults
 │   ├── application-prod.yml               # REDIS_* env surface, LIMITER_REDIS_FAIL_OPEN
 │   └── application-test.yml               # throttle/rate-limit disabled (layers absent from chain)
 ├── src/main/java/com/example/app/
-│   ├── shared/                            # flat: cache infrastructure (no business types)
-│   │   ├── CacheConfig.java               #    RedisCacheManager assembly + fail-open error handler
-│   │   ├── CacheDefaultsConfig.java       #    TTL 60s, prefix, string keys, JSON values
-│   │   ├── FailOpenCacheErrorHandler.java #    swallows GET/PUT/EVICT/CLEAR errors
-│   │   └── RedisCacheConfigurer.java      #    per-cache contribution contract
+│   ├── shared/                            # root = public contract; internals grouped by responsibility
+│   │   ├── RedisCacheConfigurer.java      #    per-cache contribution contract (root, cross-module)
+│   │   ├── cache/
+│   │   │   ├── CacheConfig.java           #    RedisCacheManager assembly + fail-open error handler
+│   │   │   ├── CacheDefaultsConfig.java   #    TTL 60s, prefix, string keys, JSON values
+│   │   │   └── FailOpenCacheErrorHandler.java # swallows GET/PUT/EVICT/CLEAR errors
 │   ├── security/
 │   │   ├── config/
 │   │   │   ├── CorsConfig.java            #    CORS source, no credentials, maxAge 3600

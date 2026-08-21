@@ -1,5 +1,6 @@
-package com.example.app.shared;
+package com.example.app.shared.cache;
 
+import com.example.app.shared.RedisCacheConfigurer;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;

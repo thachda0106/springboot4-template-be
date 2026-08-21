@@ -1,4 +1,4 @@
-package com.example.app.shared;
+package com.example.app.shared.cache;
 
 import org.springframework.boot.cache.autoconfigure.CacheProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;

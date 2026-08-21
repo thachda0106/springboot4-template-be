@@ -29,9 +29,12 @@ Modulith modules, one PostgreSQL DB, OAuth2 Resource Server (JWT). Java 21, Mave
     grouped: `jwt/` (issuance + validation — exposed to `user` via `@NamedInterface("jwt")`,
     declared as `security::jwt` in the consumer's `allowedDependencies`), `config/`
     (`SecurityConfig`, `PasswordEncoderConfig`), `web/` (401/403 handlers).
-  - `shared` stays **intentionally flat**: `ApiError`, `GlobalExceptionHandler`,
-    `ConflictException`, `ApiPathPrefixConfig`, `OpenApiConfig` (OpenAPI/Swagger UI docs,
-    JWT bearer scheme). No sub-packages, no business types.
+  - `shared` is a technical module, not a DDD context: the module **root is its public API**
+    (`ApiError`, `ConflictException`, `RedisCacheConfigurer`, `AfterCommitMetrics`); internals
+    are grouped by responsibility: `error/` (`GlobalExceptionHandler`), `web/`
+    (`ApiPathPrefixConfig`, `OpenApiConfig` — OpenAPI/Swagger UI docs, JWT bearer scheme),
+    `cache/` (`CacheConfig`, `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`).
+    No business types.
 - Boundaries are **enforced at test time** by `ApplicationModularityTests` (`verify()`) and
   `ModuleViolationDetectionTests`. Breaking a boundary fails the build.
 - **Adding a module**: create `com.example.app.<name>/` with `package-info.java`
@@ -50,7 +53,7 @@ Modulith modules, one PostgreSQL DB, OAuth2 Resource Server (JWT). Java 21, Mave
 
 ## API conventions
 
-- Global prefix `/api/v1` is applied centrally in `shared/ApiPathPrefixConfig`
+- Global prefix `/api/v1` is applied centrally in `shared/web/ApiPathPrefixConfig`
   (`addPathPrefix` for `@RestController` in `com.example.app` packages only — library
   controllers like springdoc's `/v3/api-docs` must keep their framework paths). Controllers
   declare **resource-relative** paths

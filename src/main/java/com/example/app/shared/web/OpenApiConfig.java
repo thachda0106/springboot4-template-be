@@ -1,4 +1,4 @@
-package com.example.app.shared;
+package com.example.app.shared.web;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;

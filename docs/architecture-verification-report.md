@@ -75,7 +75,7 @@ docs/architecture.md §2.
 | activity | `api` named interface (REST), `events` named interface | workflow (events only) |
 | workflow | `api` named interface (read-only REST) | HTTP clients |
 | security | root package (`CurrentUser`, `CurrentUserProvider`) | activity, user |
-| shared | root package (`ApiError`, `GlobalExceptionHandler`) | all modules |
+| shared | root package (`ApiError`, `ConflictException`, `RedisCacheConfigurer`, `AfterCommitMetrics`); internals grouped in `error/`, `web/`, `cache/` | all modules |
 
 ## 7. Forbidden dependencies (checked)
 

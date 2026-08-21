@@ -1,4 +1,4 @@
-package com.example.app.shared;
+package com.example.app.shared.web;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;

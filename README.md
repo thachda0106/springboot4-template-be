@@ -265,7 +265,7 @@ Prerequisites: JDK 21, Docker (Desktop), and (on Windows) `mvnw.cmd`; on Linux/m
 
 ```bash
 docker compose up --build
-# app on http://localhost:8080 (local profile, HMAC JWT mode), PostgreSQL on 5432, Redis on 6379
+# app on http://localhost:8080 (local profile, HMAC JWT mode), PostgreSQL on 5432, Redis on 6379, RedisInsight UI on http://localhost:5540
 ```
 
 ### Option B — run locally against your own PostgreSQL + Redis

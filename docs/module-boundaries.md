@@ -50,7 +50,7 @@ Three layers of enforcement, each stronger than the last:
 | activity | `api` named interface; `events` named interface | REST for clients; events for other modules |
 | workflow | `api` named interface | read-only REST view |
 | security | root package types | `CurrentUser`/`CurrentUserProvider` used by modules |
-| shared | root package types | `ApiError` error contract |
+| shared | root package types | `ApiError`/`ConflictException`/`RedisCacheConfigurer`/`AfterCommitMetrics` contracts |
 
 Everything else in a module is internal: controllers are reachable by other modules only
 through HTTP; repositories, entities, mappers and use-case services are not reachable at all.

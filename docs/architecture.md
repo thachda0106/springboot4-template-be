@@ -111,10 +111,11 @@ module, and (via the whitelist) any dependency not listed above. See
 - **security** — root package: `CurrentUser`, `CurrentUserProvider`. The single
   technical abstraction every module may use; no module ever touches
   `SecurityContext`/`Jwt`/`Authentication` directly.
-- **shared** — root package: `ApiError` + `GlobalExceptionHandler` + `ConflictException`
-  + `OpenApiConfig` (OpenAPI/Swagger UI docs, JWT bearer scheme) + the Redis cache
-  infrastructure (`CacheConfig`, `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`,
-  `RedisCacheConfigurer`).
+- **shared** — root package (public contract): `ApiError` + `ConflictException`
+  + `RedisCacheConfigurer` + `AfterCommitMetrics`. Internals grouped by responsibility:
+  `error/` (`GlobalExceptionHandler`), `web/` (`ApiPathPrefixConfig`, `OpenApiConfig` —
+  OpenAPI/Swagger UI docs, JWT bearer scheme), `cache/` (the Redis cache infrastructure:
+  `CacheConfig`, `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`).
   Cross-cutting *technical* concerns only.
 
 ## 6. Security architecture (summary)
@@ -169,8 +170,9 @@ cache entries. The PostgreSQL database remains the system of record.
 - **Cache stampede**: concurrent misses on a cold key hit the DB; on a Redis outage every
   request is a DB read with no load shedding. Accepted at template scale (`sync=true` provides
   only best-effort single-flight without a distributed lock).
-- **Infrastructure**: cache config lives flat in `shared` (`CacheConfig`,
-  `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`, `RedisCacheConfigurer`); per-cache typed
+- **Infrastructure**: cache config lives in `shared/cache/` (`CacheConfig`,
+  `CacheDefaultsConfig`, `FailOpenCacheErrorHandler`; the `RedisCacheConfigurer` contract
+  stays in the `shared` root); per-cache typed
   serializers live in the owning business modules (module-local Jackson mixins keep the domain
   annotation-free). Redis connection is auto-configured by `spring-boot-starter-data-redis`
   (Lettuce) from `spring.data.redis.*`.

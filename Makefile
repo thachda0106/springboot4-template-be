@@ -33,7 +33,7 @@ help:
 start\:local: docker\:up
 	$(MW) compile spring-boot:run -Dspring-boot.run.profiles=local
 
-## @target start:dev :: Run locally with all dev services (postgres + redis + observability) in Docker; hot-reloads on code changes
+## @target start:dev :: Run locally with all dev services (postgres + redis + redis-insight + observability) in Docker; hot-reloads on code changes
 start\:dev: docker\:up\:dev docker\:up\:observability
 	$(MW) compile spring-boot:run -Dspring-boot.run.profiles=local
 
@@ -47,9 +47,9 @@ start\:prod: docker\:up
 docker\:up:
 	$(COMPOSE) up -d postgres
 
-## @target docker:up:dev :: Start all services needed for native local runs (postgres + redis)
+## @target docker:up:dev :: Start all services needed for native local runs (postgres + redis + redis-insight UI)
 docker\:up\:dev:
-	$(COMPOSE) up -d postgres redis
+	$(COMPOSE) up -d postgres redis redis-insight
 
 ## @target docker:up:observability :: Start the observability stack (Jaeger/Collector/Prometheus/Grafana) + mint scraper token
 docker\:up\:observability:

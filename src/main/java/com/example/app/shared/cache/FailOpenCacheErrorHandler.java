@@ -1,4 +1,4 @@
-package com.example.app.shared;
+package com.example.app.shared.cache;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
